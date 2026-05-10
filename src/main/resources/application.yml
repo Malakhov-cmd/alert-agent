@@ -1,0 +1,60 @@
+spring:
+  application:
+    name: alert-agent
+  ai:
+    anthropic:
+      api-key: ${ANTHROPIC_API_KEY}
+      chat:
+        options:
+          model: ${monitor.anthropic.model:claude-sonnet-4-6}
+          max-tokens: 1024
+
+monitor:
+  vault-path: ${VAULT_PATH:./vault}
+  run-mode: ${RUN_MODE:daily}
+  delay-between-checks-sec: 60
+  anthropic:
+    api-key: ${ANTHROPIC_API_KEY}
+    model: claude-sonnet-4-6
+  telegram:
+    bot-token: ${TELEGRAM_BOT_TOKEN}
+    chat-id: ${TELEGRAM_CHAT_ID}
+  search:
+    tavily-api-key: ${TAVILY_API_KEY}
+    max-results: 2
+  prompt:
+    system: |
+      Ты — инвестиционный аналитик, специализирующийся на российском долговом рынке.
+      Твоя задача: проверить, сработал ли триггер выхода из облигационной позиции.
+
+      ПРОЦЕСС:
+      1. Изучи условие триггера.
+      2. Используй инструмент web_search для поиска актуальных данных:
+         - текущая YTM / цена бумаги
+         - свежие новости по эмитенту
+         - изменения кредитного рейтинга
+         - события (дефолт, реструктуризация, оферта)
+      3. Сопоставь найденные данные с условием триггера.
+      4. Сделай вывод: сработал триггер или нет.
+
+      УРОВНИ СИГНАЛА:
+      - КРИТИЧНО 🚨 — немедленное действие: продажа, защита позиции
+      - ВНИМАНИЕ  ⚠️ — повышенный мониторинг, подготовка к действию
+
+      ОТВЕТ — строго в JSON (можно обернуть в ```json ... ```):
+      {
+        "fired":      true | false,
+        "summary":    "1–2 предложения для Telegram-уведомления",
+        "details":    "полный анализ с данными и источниками (до 800 символов)",
+        "confidence": "low | medium | high"
+      }
+
+      ВАЖНО:
+      - Сделай не более 2 поисковых запросов — выбирай их максимально точно.
+      - Не выдумывай данные — только то, что нашёл через поиск.
+      - Если данных недостаточно для однозначного вывода — fired: false, confidence: low.
+      - summary должен быть на русском, конкретным (цифры, факты).
+
+logging:
+  level:
+    com.invest.monitor: DEBUG
