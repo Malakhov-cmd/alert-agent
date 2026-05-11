@@ -1,7 +1,7 @@
 # Investment Monitor Agent
 
 Агент мониторинга триггеров выхода из облигационных позиций.  
-Читает Obsidian vault → анализирует через Claude AI → присылает сигналы в Telegram.
+Читает Obsidian vault → анализирует через **Claude AI** или **Gemini** → присылает сигналы в Telegram.
 
 ---
 
@@ -26,12 +26,15 @@
 
 1. Читает таблицу триггеров из файла Obsidian vault
 2. Проверяет по базе данных, не был ли ISIN уже проверен в текущем периоде
-3. Группирует оставшиеся триггеры по ISIN — **один вызов Claude на одну бумагу**
-4. Claude делает до 3 поисковых запросов через Tavily, покрывая все триггеры по эмитенту
-5. Если условие триггера выполнено — отправляет сигнал 🚨 или ⚠️ в Telegram
-6. Сохраняет результат и полную историю проверок в PostgreSQL
-7. Между бумагами держит паузу (по умолчанию 60 сек), чтобы не превысить rate limit API
-8. Запускается по расписанию: ежедневно / еженедельно / ежемесячно / ежеквартально
+3. Группирует оставшиеся триггеры по ISIN — **один вызов LLM на одну бумагу**
+4. LLM собирает свежие данные и проверяет каждое условие:
+   - **Claude (Anthropic)** — tool-use: вызывает `webSearch` через Tavily до 3 раз на ISIN
+   - **Gemini (Google)** — нативный Grounding через Google Search, Tavily не нужен
+5. Ответ содержит для каждого триггера: `fired`, `summary`, `details`, `confidence`, `action`
+6. Если триггер сработал — отправляет сигнал 🚨 или ⚠️ в Telegram (с указанием действия)
+7. Сохраняет результат и полную историю проверок в PostgreSQL
+8. Между бумагами держит паузу (по умолчанию 60 сек) для соблюдения rate limit
+9. Запускается по расписанию: ежедневно / еженедельно / ежемесячно / ежеквартально
 
 ---
 
@@ -54,10 +57,12 @@
 
 | Переменная | Обязательна | Описание |
 |------------|-------------|----------|
-| `ANTHROPIC_API_KEY` | ✅ | Ключ Claude API |
+| `AGENT_PROVIDER` | — | Провайдер LLM: `anthropic` (по умолчанию) или `gemini` |
+| `ANTHROPIC_API_KEY` | ✅ при `anthropic` | Ключ Claude API |
+| `GOOGLE_API_KEY` | ✅ при `gemini` | Google AI Studio API Key |
 | `TELEGRAM_BOT_TOKEN` | ✅ | Токен Telegram-бота |
 | `TELEGRAM_CHAT_ID` | ✅ | ID чата/канала для сигналов |
-| `TAVILY_API_KEY` | ✅ | Ключ поискового API (в dev-режиме не нужен) |
+| `TAVILY_API_KEY` | ✅ при `anthropic` | Ключ поискового API (при gemini не нужен) |
 | `HOST_VAULT_PATH` | ✅ (Docker) | Путь к vault на хосте — монтируется как `/vault` |
 | `POSTGRES_PASSWORD` | ✅ (Docker) | Пароль PostgreSQL |
 | `VAULT_PATH` | — | Путь к vault внутри контейнера, по умолчанию `/vault` |
@@ -66,7 +71,7 @@
 | `SPRING_DATASOURCE_PASSWORD` | — | Пароль БД |
 | `RUN_MODE` | — | Режим запуска (см. [таблицу](#все-режимы-run_mode)), по умолчанию `daily` |
 | `MONITOR_TIMEZONE` | — | Часовой пояс расписания (IANA), по умолчанию `Europe/Moscow` |
-| `SPRING_PROFILES_ACTIVE` | — | `dev` — включает stub Tavily и SQL-логи |
+| `SPRING_PROFILES_ACTIVE` | — | `dev` — включает stub-режим и SQL-логи |
 
 ---
 
@@ -74,16 +79,29 @@
 
 ### Anthropic API Key (`ANTHROPIC_API_KEY`)
 
-> **Важно:** подписка Claude Pro (claude.ai) и API — это разные продукты с отдельной оплатой.  
-> Pro даёт доступ к веб-интерфейсу и Claude Code, но не к программному API.
+> Нужен только при `AGENT_PROVIDER=anthropic` (значение по умолчанию).  
+> **Важно:** подписка Claude Pro (claude.ai) и API — это разные продукты с отдельной оплатой.
 
 1. Зайди на [console.anthropic.com](https://console.anthropic.com)
 2. **API Keys** → **Create Key** → скопируй `sk-ant-...`
 3. Пополни баланс — минимум $5. Один прогон (10 уникальных ISIN) стоит ~$0.10–0.30
 
-**Лимиты нового аккаунта:** 30 000 input-токенов в минуту. Агент делает паузу между бумагами и ограничивает поиск до 3 запросов на ISIN, чтобы укладываться в лимит.
+**Лимиты нового аккаунта:** 30 000 input-токенов в минуту. Агент делает паузу между бумагами и ограничивает поиск до 3 запросов на ISIN.
 
 Используемая модель: `claude-sonnet-4-6` — задаётся в `application.yml`.
+
+### Google AI Studio API Key (`GOOGLE_API_KEY`)
+
+> Нужен только при `AGENT_PROVIDER=gemini`.  
+> Gemini с Grounding заменяет и Claude, и Tavily — при переходе оба предыдущих ключа необязательны.
+
+1. Зайди на [aistudio.google.com](https://aistudio.google.com)
+2. **Get API Key** → **Create API key** → скопируй `AIza...`
+3. Бесплатный тариф Gemini 2.5 Flash: 500 запросов/день, 10 запросов/минуту
+
+**Grounding с Google Search:** модель сама делает поисковые запросы через Google, без внешних API. Источники — весь публичный интернет, включая acra-ratings.ru, moex.com, interfax.ru и т. д.
+
+Используемая модель: `gemini-2.5-flash-preview-05-20` — задаётся в `application.yml`.
 
 ### Telegram Bot Token (`TELEGRAM_BOT_TOKEN`)
 
@@ -105,6 +123,8 @@
 
 ### Tavily API Key (`TAVILY_API_KEY`)
 
+> Нужен только при `AGENT_PROVIDER=anthropic`.
+
 1. Зарегистрируйся на [tavily.com](https://tavily.com)
 2. Скопируй API Key (`tvly-...`) в дашборде
 3. Бесплатный план: 1 000 запросов/месяц — для 10 ISIN ежедневно хватит с запасом
@@ -123,15 +143,33 @@
 
 ### Формат файла `Мониторинг триггеров.md`
 
-Файл должен содержать Markdown-таблицу. Порядок колонок произвольный — парсер определяет их по заголовку.
+Файл должен содержать Markdown-таблицу. Порядок колонок произвольный — парсер определяет их по заголовку. Колонка **Позиция** опциональна.
 
 ```markdown
-| ISIN         | Название       | Условие                          | Уровень | Частота       | Активен |
-|--------------|----------------|----------------------------------|---------|---------------|---------|
-| RU000A10ES32 | ОДК 001P-01    | Снижение рейтинга ниже A+        | 🚨      | Ежемесячно    | да      |
-| RU000A10ES32 | ОДК 001P-01    | Просрочка купона — любая задержка | 🚨     | Ежедневно     | да      |
-| RU000A108000 | ВТБ Капитал БО | Новости о реструктуризации       | ⚠️      | Ежеквартально | нет     |
+| ISIN         | Название       | Условие                          | Уровень | Частота       | Активен | Позиция |
+|--------------|----------------|----------------------------------|---------|---------------|---------|---------|
+| RU000A10ES32 | ОДК 001P-01    | Снижение рейтинга ниже A+        | 🚨      | Ежемесячно    | да      | 18%/25% |
+| RU000A10ES32 | ОДК 001P-01    | Просрочка купона — любая задержка | 🚨     | Ежедневно     | да      | 18%/25% |
+| RU000A108000 | ВТБ Капитал БО | Новости о реструктуризации       | ⚠️      | Ежеквартально | нет     |         |
 ```
+
+> Все триггеры одного ISIN должны иметь одинаковое значение колонки Позиция — агент берёт её из первого триггера группы.
+
+### Колонка Позиция
+
+Формат: `текущая%/лимит%` — текущая доля в портфеле и максимально допустимая.
+
+| Значение | currentSharePct | limitPct | Что получит агент |
+|----------|-----------------|----------|-------------------|
+| `18%/25%` | 18.0 | 25.0 | `"position": {"current_share_pct": 18.0, "limit_pct": 25.0}` |
+| `0%/20%` | 0.0 | 20.0 | позиция ещё не открыта, лимит задан |
+| `3%/` | 3.0 | null | доля без ограничения |
+| *(пусто)* | null | null | поле position не передаётся |
+
+Агент использует позицию при формировании `action`:
+- `current >= limit` → «сократить до лимита N%»
+- `current >= limit × 0.8` → «не докупать, доля близка к лимиту»
+- `fired=true` + 🚨 → «выход, высвобождается ~N% портфеля»
 
 ### Допустимые значения
 
@@ -165,25 +203,29 @@ Obsidian vault (MD-файл)
         ▼
   TriggerParser          Читает таблицу, парсит строки в Trigger-records
         │                Фильтрует: active=true + нужная частота
+        │                Опционально читает колонку Позиция (currentSharePct / limitPct)
         ▼
   TriggerStateService    Проверяет по PostgreSQL: ISIN уже обработан в этом периоде?
         │                Да → пропустить весь ISIN. Нет → передать агенту
         ▼
   MonitorAgent           Группирует по ISIN, для каждого ISIN (с паузой между ними):
         │
-        ├─► Claude API   Один запрос = один ISIN со всеми его триггерами
-        │   (tool-use)   Системный промпт + список условий + предыдущий результат из БД
-        │       │
-        │       ▼
-        │   AgentTools   Claude вызывает webSearch(query) — до 3 раз на ISIN
-        │   webSearch ──► Tavily API (рейтинговые агентства, биржа, регулятор)
-        │     [или stub]  acra-ratings.ru, moex.com, cbr.ru, interfax.ru...
-        │       ▼
-        │   Claude       Возвращает JSON-массив: по одному объекту на каждый триггер
-        │                [{ condition, fired, summary, details, confidence }, ...]
+        ├─► ANTHROPIC    Один запрос = один ISIN со всеми триггерами + позицией
+        │   Claude       Системный промпт + список условий + previous_result из БД
+        │   (tool-use)       │
+        │                    ▼
+        │               AgentTools.webSearch → Tavily API (до 3 раз на ISIN)
+        │               acra-ratings.ru, moex.com, cbr.ru, interfax.ru...
+        │
+        ├─► GEMINI       Тот же запрос, без tool-use
+        │   Gemini 2.5   Grounding: Google Search встроен в модель (Tavily не нужен)
+        │   Flash
+        │
+        ▼   (оба провайдера возвращают одинаковый формат)
+        │   JSON-массив: [{ condition, fired, summary, details, confidence, action }, ...]
         │
         ▼
-  TriggerStateService    INSERT в trigger_check_history (каждый триггер)
+  TriggerStateService    INSERT в trigger_check_history (каждый триггер + action)
         │                UPDATE trigger_state (last_checked_at, last_fired_at, last_summary...)
         ▼
   MonitorResult          fired=true → сигнал, fired=false → норма
@@ -192,14 +234,14 @@ Obsidian vault (MD-файл)
   TelegramNotifier       Только сработавшие (fired=true) → sendMessage
         │
         ▼
-  Telegram               🚨 или ⚠️ сообщение в чат
+  Telegram               🚨 или ⚠️ сообщение с summary, details и 🎯 action
 ```
 
 ---
 
 ## Когда триггер берётся в работу
 
-Перед каждым запуском агент проверяет таблицу `trigger_state` в PostgreSQL. ISIN **пропускается целиком** (все его триггеры, 0 вызовов Claude), если он уже был проверен в текущем периоде.
+Перед каждым запуском агент проверяет таблицу `trigger_state` в PostgreSQL. ISIN **пропускается целиком** (все его триггеры, 0 вызовов LLM), если он уже был проверен в текущем периоде.
 
 ### Определение «текущего периода»
 
@@ -229,10 +271,10 @@ Obsidian vault (MD-файл)
 
   4. Запись найдена, last_checked_at входит в текущий период
        → ISIN уже проверен в этом цикле
-       → пропускаем (0 токенов, 0 вызовов Claude)
+       → пропускаем (0 токенов, 0 вызовов LLM)
 
-После успешной проверки одного ISIN (один вызов Claude):
-  → для каждого триггера: INSERT в trigger_check_history
+После успешной проверки одного ISIN:
+  → для каждого триггера: INSERT в trigger_check_history (включая action)
   → UPDATE trigger_state: last_checked_at = сегодня
                            last_fired_at = сегодня (если хотя бы один fired)
                            last_summary / last_details / last_confidence
@@ -240,7 +282,7 @@ Obsidian vault (MD-файл)
 
 ### Почему это важно
 
-Без персистентного состояния каждый перезапуск приложения заново прогоняет все триггеры через Claude. При `RUN_MODE=scheduled` это не проблема (крон запускается раз в день/неделю), но при сбое контейнера в тот же день — дублирующиеся Telegram-сообщения и лишние расходы токенов.
+Без персистентного состояния каждый перезапуск приложения заново прогоняет все триггеры через LLM. При `RUN_MODE=scheduled` это не проблема (крон запускается раз в день/неделю), но при сбое контейнера в тот же день — дублирующиеся Telegram-сообщения и лишние расходы.
 
 PostgreSQL устраняет эту проблему: даже после 10 перезапусков в один день каждый ISIN проверяется ровно один раз за период.
 
@@ -270,24 +312,25 @@ CREATE TABLE trigger_check_history (
     fired          BOOLEAN      NOT NULL,
     summary        TEXT,
     details        TEXT,
-    confidence     VARCHAR(10)
+    confidence     VARCHAR(10),
+    action         VARCHAR(200)           -- рекомендованное действие от агента
 );
 ```
 
-Миграции применяются автоматически при старте через Flyway (V1, V2).
+Миграции применяются автоматически при старте через Flyway (V1, V2, V3).
 
 ### Просмотр истории
 
 ```sql
 -- Все срабатывания за последние 30 дней
-SELECT checked_at, name, condition_text, summary, confidence
+SELECT checked_at, name, condition_text, summary, confidence, action
 FROM trigger_check_history
 WHERE fired = true
   AND checked_at >= now() - interval '30 days'
 ORDER BY checked_at DESC;
 
 -- История конкретной бумаги
-SELECT checked_at, condition_text, fired, summary, confidence
+SELECT checked_at, condition_text, fired, summary, confidence, action
 FROM trigger_check_history
 WHERE isin = 'RU000A10ES32'
 ORDER BY checked_at DESC;
@@ -314,16 +357,26 @@ ORDER BY last_fired_at DESC NULLS LAST;
 
 2. Больше ничего — JDK и PostgreSQL устанавливать не нужно, они живут внутри контейнеров.
 
-### Шаг 1 — Получи ключи
+### Шаг 1 — Определись с провайдером и получи ключи
 
-Перед запуском нужны четыре ключа. Подробно — в разделе [Откуда брать секреты](#откуда-брать-секреты).
+Подробно — в разделе [Откуда брать секреты](#откуда-брать-секреты).
+
+**Вариант A — Claude + Tavily (по умолчанию):**
 
 | Ключ | Где взять | Примерный вид |
 |------|-----------|---------------|
 | `ANTHROPIC_API_KEY` | console.anthropic.com → API Keys | `sk-ant-api03-...` |
-| `TELEGRAM_BOT_TOKEN` | @BotFather в Telegram → /newbot | `7123456789:AAF...` |
-| `TELEGRAM_CHAT_ID` | getUpdates или @getidsbot | `123456789` или `-1001234567890` |
 | `TAVILY_API_KEY` | tavily.com → Dashboard | `tvly-...` |
+| `TELEGRAM_BOT_TOKEN` | @BotFather → /newbot | `7123456789:AAF...` |
+| `TELEGRAM_CHAT_ID` | getUpdates или @getidsbot | `123456789` или `-1001234567890` |
+
+**Вариант B — Gemini с Grounding (без Tavily):**
+
+| Ключ | Где взять | Примерный вид |
+|------|-----------|---------------|
+| `GOOGLE_API_KEY` | aistudio.google.com → Get API Key | `AIza...` |
+| `TELEGRAM_BOT_TOKEN` | @BotFather → /newbot | `7123456789:AAF...` |
+| `TELEGRAM_CHAT_ID` | getUpdates или @getidsbot | `123456789` или `-1001234567890` |
 
 ### Шаг 2 — Создай `.env`
 
@@ -333,28 +386,28 @@ ORDER BY last_fired_at DESC NULLS LAST;
 cp .env.example .env
 ```
 
-Открой `.env` в редакторе и заполни каждую строку:
-
+**Для варианта A (Claude):**
 ```bash
-# Ключи API
-ANTHROPIC_API_KEY=sk-ant-api03-...   # твой ключ с console.anthropic.com
-TELEGRAM_BOT_TOKEN=7123456789:AAF... # токен от @BotFather
-TELEGRAM_CHAT_ID=-1001234567890      # ID твоего канала или личного чата
-TAVILY_API_KEY=tvly-...              # ключ с tavily.com
-
-# PostgreSQL — придумай любой пароль
+AGENT_PROVIDER=anthropic
+ANTHROPIC_API_KEY=sk-ant-api03-...
+TAVILY_API_KEY=tvly-...
+TELEGRAM_BOT_TOKEN=7123456789:AAF...
+TELEGRAM_CHAT_ID=-1001234567890
 POSTGRES_PASSWORD=my-secret-pass
-
-# Путь к папке Obsidian vault на твоём компьютере
-# Это папка, внутри которой лежит папка Invest/ с файлом триггеров
 HOST_VAULT_PATH=/Users/you/Documents/Obsidian/my-vault
-
-# Режим запуска при старте контейнера
-# scheduled — только по расписанию (продакшн)
-# daily / weekly / monthly / quarterly — немедленный прогон + расписание
 RUN_MODE=scheduled
+MONITOR_TIMEZONE=Europe/Moscow
+```
 
-# Часовой пояс для расписания (IANA timezone name)
+**Для варианта B (Gemini):**
+```bash
+AGENT_PROVIDER=gemini
+GOOGLE_API_KEY=AIza...
+TELEGRAM_BOT_TOKEN=7123456789:AAF...
+TELEGRAM_CHAT_ID=-1001234567890
+POSTGRES_PASSWORD=my-secret-pass
+HOST_VAULT_PATH=/Users/you/Documents/Obsidian/my-vault
+RUN_MODE=scheduled
 MONITOR_TIMEZONE=Europe/Moscow
 ```
 
@@ -417,19 +470,19 @@ docker compose exec postgres psql -U alertagent -d alertagent
 
 ## Режим разработки (dev)
 
-Dev-режим позволяет проверить работу агента без реальных запросов в Tavily и Claude — никаких расходов на токены. Полезно при разработке, отладке пайплайна или проверке персистентности.
+Dev-режим позволяет проверить работу агента без реальных вызовов LLM и поисковых API — никаких расходов. Полезно при разработке, отладке пайплайна или проверке персистентности.
 
 ### Что включает
 
 | Компонент | Поведение в dev-режиме |
 |-----------|----------------------|
+| **Claude / Gemini** | Не вызывается. `checkIsin()` сразу возвращает `MonitorResult.ok` с пометкой `[STUB]` |
 | **Tavily** | Не вызывается. `webSearch()` возвращает фиктивный текст с пометкой `[STUB]` |
-| **Claude** | Не вызывается. `checkIsin()` сразу возвращает `MonitorResult.ok` с пометкой `[STUB]` |
 | **PostgreSQL** | Работает в штатном режиме, история пишется как обычно |
 | **Telegram** | Работает в штатном режиме — уведомления реальные |
 | **SQL-логи** | Все SQL-запросы Hibernate видны в консоли с параметрами |
 
-> Ключи `TAVILY_API_KEY` и `ANTHROPIC_API_KEY` в dev-режиме не используются — можно передать любые строки.
+> В dev-режиме ни `ANTHROPIC_API_KEY`, ни `GOOGLE_API_KEY`, ни `TAVILY_API_KEY` не используются — можно передать любые строки или не указывать вовсе.
 
 ### Как активировать
 
@@ -457,14 +510,13 @@ SPRING_PROFILES_ACTIVE=dev java --enable-preview -jar alert-agent.jar
 ### Что увидишь в логах
 
 ```
-WARN  [STUB] Claude не вызывается — возвращаем фиктивный OK для ISIN RU000A106347
-WARN  [STUB] Tavily заглушка активна — возвращаем фиктивный ответ для: «ОФЗ 26238 YTM 2026»
+WARN  [STUB] Агент не вызывается — возвращаем фиктивный OK для ISIN RU000A106347
 DEBUG Hibernate: select ts1_0.isin,ts1_0.frequency,... from trigger_state ts1_0 where ts1_0.isin=? and ts1_0.frequency=?
 TRACE binding parameter (1:VARCHAR) <- [RU000A106347]
 TRACE binding parameter (2:VARCHAR) <- [DAILY]
 ```
 
-Первые две строки — Claude и Tavily заменены заглушками, токены не тратятся. Далее — реальные SQL-запросы к PostgreSQL с подставленными параметрами.
+Первая строка — LLM-агент заменён заглушкой, токены не тратятся. Далее — реальные SQL-запросы к PostgreSQL с подставленными параметрами.
 
 ### Ограничения
 
@@ -475,17 +527,30 @@ TRACE binding parameter (2:VARCHAR) <- [DAILY]
 
 ## Другие сценарии запуска
 
-### Локально (разовый прогон)
+### Локально (разовый прогон с Claude)
 
 ```bash
 # PostgreSQL должен быть запущен отдельно
 mvn clean package -DskipTests
 
+AGENT_PROVIDER=anthropic \
 ANTHROPIC_API_KEY=sk-ant-... \
 TELEGRAM_BOT_TOKEN=7123456789:AAF... \
 TELEGRAM_CHAT_ID=123456789 \
 TAVILY_API_KEY=tvly-... \
-VAULT_PATH=/Users/you/Obsidian/Invest \
+VAULT_PATH=/Users/you/Obsidian/my-vault \
+RUN_MODE=monthly \
+java --enable-preview -jar target/alert-agent-0.1.0-SNAPSHOT.jar
+```
+
+### Локально (разовый прогон с Gemini)
+
+```bash
+AGENT_PROVIDER=gemini \
+GOOGLE_API_KEY=AIza... \
+TELEGRAM_BOT_TOKEN=7123456789:AAF... \
+TELEGRAM_CHAT_ID=123456789 \
+VAULT_PATH=/Users/you/Obsidian/my-vault \
 RUN_MODE=monthly \
 java --enable-preview -jar target/alert-agent-0.1.0-SNAPSHOT.jar
 ```
@@ -514,20 +579,36 @@ RUN_MODE=scheduled java --enable-preview -jar alert-agent.jar
 
 Все параметры можно переопределить без пересборки — через `application.yml`, переменные окружения или аргументы командной строки.
 
+### Выбор провайдера LLM
+
+```yaml
+monitor:
+  agent-provider: anthropic   # anthropic | gemini
+```
+
+Или через переменную окружения:
+```bash
+AGENT_PROVIDER=gemini
+```
+
 ### Ключевые параметры `application.yml`
 
 ```yaml
 monitor:
+  agent-provider: anthropic      # anthropic | gemini
   timezone: Europe/Moscow        # часовой пояс расписания (IANA)
   delay-between-checks-sec: 60   # пауза между ISIN (сек)
   search:
-    max-results: 3               # результатов Tavily на один запрос
-    stub: false                  # true — заглушка вместо реального Tavily
-    include-domains:             # приоритетные источники для поиска
+    stub: false                  # true — заглушка вместо реального LLM/Tavily
+    max-results: 3               # результатов Tavily на один запрос (только для anthropic)
+    include-domains:             # приоритетные источники для Tavily
       - acra-ratings.ru
       - moex.com
       - cbr.ru
     tavily-url: https://api.tavily.com
+  google:
+    model: gemini-2.5-flash-preview-05-20  # только при agent-provider=gemini
+    base-url: https://generativelanguage.googleapis.com
   telegram:
     api-base-url: https://api.telegram.org/bot
   prompt:
@@ -540,7 +621,7 @@ spring:
       chat:
         options:
           model: claude-sonnet-4-6
-          max-tokens: 2048       # максимум токенов в ответе Claude
+          max-tokens: 4096
 ```
 
 ### Переопределение через аргументы запуска
@@ -554,22 +635,17 @@ java --enable-preview -jar alert-agent.jar \
 java --enable-preview -jar alert-agent.jar \
   --monitor.timezone=Asia/Almaty
 
-# Dev-режим + другой RUN_MODE
+# Переключить провайдер без пересборки
 java --enable-preview -jar alert-agent.jar \
-  --spring.profiles.active=dev \
-  --monitor.run-mode=monthly
+  --monitor.agent-provider=gemini \
+  --monitor.google.api-key=AIza...
 ```
 
 ### Про rate limit
 
-Новый Anthropic API аккаунт имеет лимит **30 000 input-токенов в минуту**. Один вызов агента (один ISIN с 3–5 триггерами) потребляет ~8 000–12 000 токенов. Поэтому:
+**Claude (Anthropic):** новый аккаунт — 30 000 input-токенов/мин. Один вызов (один ISIN, 3–5 триггеров) ~8 000–12 000 токенов. Поэтому пауза 60 сек по умолчанию. При Tier 2 ($40+) лимит 80 000 токенов/мин — паузу можно снизить до 10–15 сек.
 
-- `delay-between-checks-sec: 60` — одна бумага в минуту
-- `max-results: 3` — ограниченные ответы Tavily
-- `max-tokens: 2048` — вмещает JSON-массив по всем триггерам ISIN
-- Промпт ограничивает Claude до 3 поисков на бумагу
-
-При `Tier 2` (после пополнения на $40+) лимит вырастает до 80 000 токенов/мин — паузу можно снизить до 10–15 сек.
+**Gemini (Google):** бесплатный тариф — 10 запросов/мин, 500 запросов/день. Для 10 ISIN ежедневно хватает. Платный тариф снимает большинство ограничений.
 
 ---
 
@@ -583,6 +659,7 @@ java --enable-preview -jar alert-agent.jar \
 По данным ra-national.ru рейтинг эмитента пересмотрен
 с A+ до A, прогноз изменён на негативный. Причина —
 рост долговой нагрузки по итогам 2025 года.
+🎯 выход, высвобождается ~18% портфеля
 ```
 
 ### ⚠️ Предупреждение
@@ -593,6 +670,7 @@ java --enable-preview -jar alert-agent.jar \
 Агентство АКРА 07.05.2026 пересмотрело рейтинг в сторону
 понижения. Причина — рост долговой нагрузки и снижение
 экспортной выручки. Источник: acra-ratings.ru
+🎯 не докупать, доля близка к лимиту
 ```
 
 ### Когда сигнала нет
@@ -605,37 +683,41 @@ java --enable-preview -jar alert-agent.jar \
 
 ```
 src/main/java/com/invest/monitor/
-├── AlertAgentApplication.java       — точка входа Spring Boot
+├── AlertAgentApplication.java           — точка входа Spring Boot
 ├── agent/
-│   ├── MonitorAgent.java            — группировка по ISIN, tool-use loop
-│   └── AgentTools.java              — @Tool webSearch → Tavily API (или stub)
+│   ├── MonitorAgent.java                — интерфейс: checkAll(triggers)
+│   ├── AbstractMonitorAgent.java        — общая логика: группировка, промпт, парсинг
+│   ├── AnthropicMonitorAgent.java       — Claude + Tavily tool-use (@ConditionalOnProperty)
+│   ├── GeminiMonitorAgent.java          — Gemini + Google Search Grounding (@ConditionalOnProperty)
+│   └── AgentTools.java                  — @Tool webSearch → Tavily API (stub-режим)
 ├── config/
-│   └── MonitorConfig.java           — @ConfigurationProperties (monitor.*)
+│   └── MonitorConfig.java               — @ConfigurationProperties (monitor.*)
 ├── domain/
-│   ├── Trigger.java                 — record: одна строка таблицы
-│   ├── TriggerLevel.java            — sealed interface: Critical | Warning
-│   ├── TriggerFrequency.java        — enum: DAILY | WEEKLY | MONTHLY | QUARTERLY
-│   └── MonitorResult.java           — record: результат проверки триггера
+│   ├── Trigger.java                     — record: строка таблицы + позиция в портфеле
+│   ├── TriggerLevel.java                — sealed interface: Critical | Warning
+│   ├── TriggerFrequency.java            — enum: DAILY | WEEKLY | MONTHLY | QUARTERLY
+│   └── MonitorResult.java               — record: fired, summary, details, confidence, action
 ├── parser/
-│   └── TriggerParser.java           — читает MD-таблицу из vault
+│   └── TriggerParser.java               — читает MD-таблицу, парсит колонку Позиция
 ├── scheduler/
-│   └── MonitorScheduler.java        — @Scheduled расписание + startup run
+│   └── MonitorScheduler.java            — @Scheduled расписание + startup run
 ├── state/
-│   ├── TriggerState.java            — JPA-сущность: (isin, frequency) → состояние
-│   ├── TriggerStateId.java          — составной ключ для JPA
-│   ├── TriggerStateRepository.java  — Spring Data репозиторий
-│   ├── TriggerStateService.java     — дедупликация по периодам + запись истории
-│   ├── TriggerCheckHistory.java     — JPA-сущность: одна запись на проверку
+│   ├── TriggerState.java                — JPA-сущность: (isin, frequency) → состояние
+│   ├── TriggerStateId.java              — составной ключ для JPA
+│   ├── TriggerStateRepository.java      — Spring Data репозиторий
+│   ├── TriggerStateService.java         — дедупликация по периодам + запись истории
+│   ├── TriggerCheckHistory.java         — JPA-сущность: одна запись на проверку (+ action)
 │   └── TriggerCheckHistoryRepository.java
 └── telegram/
-    └── TelegramNotifier.java        — RestClient → Telegram Bot API
+    └── TelegramNotifier.java            — RestClient → Telegram Bot API (+ 🎯 action)
 
 src/main/resources/
-├── application.yml                  — основная конфигурация + системный промпт
-├── application-dev.yml              — dev-профиль: stub Tavily + SQL-логи
+├── application.yml                      — основная конфигурация + системный промпт
+├── application-dev.yml                  — dev-профиль: stub LLM/Tavily + SQL-логи
 └── db/migration/
-    ├── V1__create_trigger_state.sql — создание trigger_state
-    └── V2__add_history.sql          — добавление trigger_check_history
+    ├── V1__create_trigger_state.sql     — создание trigger_state
+    ├── V2__add_history.sql              — добавление trigger_check_history
+    └── V3__add_action_to_history.sql    — колонка action в trigger_check_history
 
 src/test/
 ├── java/com/invest/monitor/
@@ -648,9 +730,9 @@ src/test/
 │       └── MonitorSchedulerTest.java
 └── resources/
     └── vault/Invest/
-        └── Мониторинг триггеров.md  — тестовый fixture
+        └── Мониторинг триггеров.md      — тестовый fixture
 
-Dockerfile                           — двухэтапная сборка: Maven → JRE alpine
-docker-compose.yml                   — app + PostgreSQL 16
-.env.example                         — шаблон переменных окружения
+Dockerfile                               — двухэтапная сборка: Maven → JRE alpine
+docker-compose.yml                       — app + PostgreSQL 16
+.env.example                             — шаблон переменных окружения
 ```
