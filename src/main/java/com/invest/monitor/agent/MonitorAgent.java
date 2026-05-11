@@ -45,6 +45,7 @@ public class MonitorAgent {
     private final ObjectMapper        mapper;
     private final String              systemPrompt;
     private final long                delaySec;
+    private final boolean             stub;
 
     public MonitorAgent(ChatClient.Builder builder,
                         AgentTools agentTools,
@@ -57,6 +58,7 @@ public class MonitorAgent {
         this.mapper       = mapper;
         this.systemPrompt = config.prompt().system();
         this.delaySec     = config.delayBetweenChecksSec();
+        this.stub         = config.search().stub();
     }
 
     // ── Публичный API ────────────────────────────────────────────────
@@ -97,6 +99,14 @@ public class MonitorAgent {
     private List<MonitorResult> checkIsin(String isin, List<Trigger> triggers,
                                            TriggerFrequency frequency) {
         log.info("Проверяем ISIN {} ({} триггеров)", isin, triggers.size());
+
+        if (stub) {
+            log.warn("[STUB] Claude не вызывается — возвращаем фиктивный OK для ISIN {}", isin);
+            return triggers.stream()
+                    .map(t -> MonitorResult.ok(t, "[STUB] Проверка пропущена в dev-режиме", "stub"))
+                    .toList();
+        }
+
         try {
             String raw = callClaude(isin, triggers, frequency);
             return parseArrayResponse(triggers, raw);
