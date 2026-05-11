@@ -43,6 +43,11 @@ public class TriggerCheckHistory {
 
     protected TriggerCheckHistory() {}
 
+    public LocalDateTime getCheckedAt()   { return checkedAt; }
+    public boolean       isFired()        { return fired; }
+    public String        getConfidence()  { return confidence; }
+    public String        getSummary()     { return summary; }
+
     public TriggerCheckHistory(String isin, String name, String conditionText,
                                 LocalDateTime checkedAt, String runMode,
                                 boolean fired, String summary, String details,

@@ -82,7 +82,11 @@ public record MonitorConfig(
 
             /** Заглушка поиска: возвращает фиктивный ответ без HTTP-запроса к Tavily. */
             @DefaultValue("false")
-            boolean stub
+            boolean stub,
+
+            /** Сколько последних проверок передавать агенту как previous_results. */
+            @DefaultValue("3")
+            int historySize
     ) {}
 
     public record Prompt(

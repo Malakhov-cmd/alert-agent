@@ -153,7 +153,7 @@ class MonitorSchedulerTest {
                 "./vault", runMode, 0L,
                 new MonitorConfig.Anthropic("key", "model"),
                 new MonitorConfig.Telegram("token", "chat", ""),
-                new MonitorConfig.Search("tavily-key", 5, List.of(), "", false),
+                new MonitorConfig.Search("tavily-key", 5, List.of(), "", false, 3),
                 new MonitorConfig.Prompt("test system prompt"),
                 "Europe/Moscow", "anthropic",
                 new MonitorConfig.Google("", "gemini-2.5-flash", "")

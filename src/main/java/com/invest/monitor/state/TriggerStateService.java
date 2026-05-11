@@ -5,12 +5,14 @@ import com.invest.monitor.domain.Trigger;
 import com.invest.monitor.domain.TriggerFrequency;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 @Service
@@ -40,6 +42,12 @@ public class TriggerStateService {
     /** Возвращает последнее сохранённое состояние для данного ISIN и частоты. */
     public Optional<TriggerState> getState(String isin, TriggerFrequency frequency) {
         return stateRepo.findById(new TriggerStateId(isin, frequency.name()));
+    }
+
+    /** Возвращает последние N записей истории для конкретного триггера (новые первыми). */
+    public List<TriggerCheckHistory> getRecentHistory(String isin, String conditionText, int limit) {
+        return historyRepo.findByIsinAndConditionTextOrderByCheckedAtDesc(
+                isin, conditionText, PageRequest.of(0, limit));
     }
 
     /**

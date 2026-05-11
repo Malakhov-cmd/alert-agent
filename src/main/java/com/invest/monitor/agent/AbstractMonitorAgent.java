@@ -6,12 +6,11 @@ import com.invest.monitor.config.MonitorConfig;
 import com.invest.monitor.domain.MonitorResult;
 import com.invest.monitor.domain.Trigger;
 import com.invest.monitor.domain.TriggerFrequency;
-import com.invest.monitor.state.TriggerState;
+import com.invest.monitor.state.TriggerCheckHistory;
 import com.invest.monitor.state.TriggerStateService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.time.LocalDate;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -36,6 +35,7 @@ abstract class AbstractMonitorAgent implements MonitorAgent {
     protected final String              systemPrompt;
     protected final long                delaySec;
     protected final boolean             stub;
+    private   final int                 historySize;
 
     protected AbstractMonitorAgent(TriggerStateService stateService,
                                     ObjectMapper mapper,
@@ -45,6 +45,7 @@ abstract class AbstractMonitorAgent implements MonitorAgent {
         this.systemPrompt = config.prompt().system();
         this.delaySec     = config.delayBetweenChecksSec();
         this.stub         = config.search().stub();
+        this.historySize  = config.search().historySize();
     }
 
     // ── Публичный API ────────────────────────────────────────────────
@@ -107,14 +108,13 @@ abstract class AbstractMonitorAgent implements MonitorAgent {
 
     protected String buildUserMessage(String isin, List<Trigger> triggers,
                                       TriggerFrequency frequency) {
-        Optional<TriggerState> prevState = stateService.getState(isin, frequency);
-
         List<Map<String, Object>> triggerList = triggers.stream()
                 .map(t -> {
                     Map<String, Object> m = new LinkedHashMap<>();
                     m.put("condition", t.condition());
                     m.put("level", t.level().emoji() + " " + t.level().label());
-                    m.put("previous_result", formatPreviousResult(prevState));
+                    List<Map<String, Object>> history = formatHistory(isin, t.condition());
+                    if (history != null) m.put("previous_results", history);
                     return m;
                 })
                 .toList();
@@ -143,18 +143,20 @@ abstract class AbstractMonitorAgent implements MonitorAgent {
         }
     }
 
-    private Map<String, Object> formatPreviousResult(Optional<TriggerState> state) {
-        return state.map(s -> {
-            String status = s.getLastFiredAt() != null
-                    && !s.getLastFiredAt().isBefore(LocalDate.now().minusDays(1))
-                    ? "FIRED" : "OK";
-            Map<String, Object> m = new LinkedHashMap<>();
-            m.put("status",     status);
-            m.put("confidence", s.getLastConfidence() != null ? s.getLastConfidence() : "unknown");
-            m.put("checked_at", s.getLastCheckedAt().toString());
-            if (s.getLastSummary() != null) m.put("summary", s.getLastSummary());
-            return m;
-        }).orElse(null);
+    private List<Map<String, Object>> formatHistory(String isin, String conditionText) {
+        List<TriggerCheckHistory> history = stateService.getRecentHistory(isin, conditionText, historySize);
+        if (history.isEmpty()) return null;
+        return history.stream()
+                .map(h -> {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("checked_at",  h.getCheckedAt().toLocalDate().toString());
+                    m.put("status",      h.isFired() ? "FIRED" : "OK");
+                    m.put("confidence",  h.getConfidence() != null ? h.getConfidence() : "unknown");
+                    if (h.getSummary() != null && !h.getSummary().isBlank())
+                        m.put("summary", h.getSummary());
+                    return m;
+                })
+                .toList();
     }
 
     // ── Парсинг ответа ───────────────────────────────────────────────
