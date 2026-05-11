@@ -4,10 +4,10 @@ FROM maven:3.9-eclipse-temurin-21-alpine AS build
 WORKDIR /build
 COPY pom.xml .
 # Скачиваем зависимости отдельным слоем — кешируется пока pom.xml не изменился
-RUN mvn -q dependency:go-offline -Dmaven.test.skip=true
+RUN mvn dependency:go-offline -Dmaven.test.skip=true
 
 COPY src ./src
-RUN mvn -q package -DskipTests
+RUN mvn package -DskipTests
 
 # ── Этап 2: образ для запуска ────────────────────────────────────────
 FROM eclipse-temurin:21-jre-alpine
