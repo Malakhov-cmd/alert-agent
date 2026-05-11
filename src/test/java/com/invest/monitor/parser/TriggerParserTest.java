@@ -31,7 +31,7 @@ class TriggerParserTest {
                 new MonitorConfig.Search("test-tavily-key", 5, List.of(), "", false),
                 new MonitorConfig.Prompt("test system prompt"),
                 "Europe/Moscow", "anthropic",
-                new MonitorConfig.Google("", "gemini-2.5-flash-preview-05-20", "")
+                new MonitorConfig.Google("", "gemini-2.5-flash", "")
         );
         parser = new TriggerParser(config);
     }
@@ -115,7 +115,7 @@ class TriggerParserTest {
                 new MonitorConfig.Search("s", 5, List.of(), "", false),
                 new MonitorConfig.Prompt("test prompt"),
                 "Europe/Moscow", "anthropic",
-                new MonitorConfig.Google("", "gemini-2.5-flash-preview-05-20", "")
+                new MonitorConfig.Google("", "gemini-2.5-flash", "")
         );
         TriggerParser badParser = new TriggerParser(badConfig);
 

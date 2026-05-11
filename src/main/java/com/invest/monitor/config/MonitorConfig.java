@@ -98,7 +98,7 @@ public record MonitorConfig(
             String apiKey,
 
             /** Модель Gemini. */
-            @DefaultValue("gemini-2.5-flash-preview-05-20")
+            @DefaultValue("gemini-2.5-flash")
             String model,
 
             /** Базовый URL Google Generative Language API. */
