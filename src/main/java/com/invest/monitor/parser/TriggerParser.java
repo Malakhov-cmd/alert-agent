@@ -139,7 +139,8 @@ public class TriggerParser {
                 condition,
                 TriggerLevel.of(rawLevel),
                 TriggerFrequency.of(rawFreq),
-                isActive(rawActive)
+                isActive(rawActive),
+                parsePosition(cells, colIndex)
         );
     }
 
@@ -182,6 +183,29 @@ public class TriggerParser {
     private boolean isSeparator(String line) {
         // строка вида |---|---| или |:---|:---:|
         return line.replaceAll("[|:\\-\\s]", "").isEmpty();
+    }
+
+    /**
+     * Парсит опциональную колонку «Позиция» формата «3%/5%» (текущая доля / лимит).
+     * Возвращает null если колонки нет или значение пустое/некорректное.
+     */
+    private Trigger.Position parsePosition(String[] cells, Map<String, Integer> colIndex) {
+        Integer idx = colIndex.get("позиция");
+        if (idx == null) idx = colIndex.get("position");
+        if (idx == null || idx >= cells.length) return null;
+
+        String raw = cells[idx].replaceAll("[%\\s]", "");
+        if (raw.isEmpty() || raw.equals("-")) return null;
+
+        String[] parts = raw.split("/");
+        if (parts.length != 2) return null;
+
+        try {
+            return new Trigger.Position(Double.parseDouble(parts[0]), Double.parseDouble(parts[1]));
+        } catch (NumberFormatException e) {
+            log.warn("Не удалось разобрать позицию: «{}»", cells[idx]);
+            return null;
+        }
     }
 
     private boolean isActive(String raw) {

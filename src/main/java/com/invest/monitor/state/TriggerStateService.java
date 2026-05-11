@@ -58,7 +58,7 @@ public class TriggerStateService {
         historyRepo.save(new TriggerCheckHistory(
                 t.isin(), t.name(), t.condition(),
                 LocalDateTime.now(), frequency.name(),
-                result.fired(), result.summary(), result.details(), result.confidence()
+                result.fired(), result.summary(), result.details(), result.confidence(), result.action()
         ));
 
         TriggerStateId id    = new TriggerStateId(t.isin(), frequency.name());

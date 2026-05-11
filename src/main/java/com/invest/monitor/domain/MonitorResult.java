@@ -10,6 +10,7 @@ import java.time.Instant;
  * @param summary     Краткое резюме агента (≤ 500 символов)
  * @param details     Полный анализ агента (для логов и истории)
  * @param confidence  Уверенность агента: low | medium | high
+ * @param action      Конкретное действие от агента (выход / не докупать / наблюдать)
  * @param checkedAt   Момент завершения проверки
  */
 public record MonitorResult(
@@ -18,6 +19,7 @@ public record MonitorResult(
         String  summary,
         String  details,
         String  confidence,
+        String  action,
         Instant checkedAt
 ) {
     public static MonitorResult ok(Trigger trigger, String details) {
@@ -25,7 +27,11 @@ public record MonitorResult(
     }
 
     public static MonitorResult ok(Trigger trigger, String details, String confidence) {
-        return new MonitorResult(trigger, false, "Норма", details, confidence, Instant.now());
+        return ok(trigger, details, confidence, null);
+    }
+
+    public static MonitorResult ok(Trigger trigger, String details, String confidence, String action) {
+        return new MonitorResult(trigger, false, "Норма", details, confidence, action, Instant.now());
     }
 
     public static MonitorResult fired(Trigger trigger, String summary, String details) {
@@ -33,22 +39,31 @@ public record MonitorResult(
     }
 
     public static MonitorResult fired(Trigger trigger, String summary, String details, String confidence) {
-        return new MonitorResult(trigger, true, summary, details, confidence, Instant.now());
+        return fired(trigger, summary, details, confidence, null);
+    }
+
+    public static MonitorResult fired(Trigger trigger, String summary, String details,
+                                      String confidence, String action) {
+        return new MonitorResult(trigger, true, summary, details, confidence, action, Instant.now());
     }
 
     /** Форматирует Telegram-сообщение (вызывается только если fired == true). HTML parse_mode. */
     public String toTelegramMessage() {
         String shortDetails = details.length() > 400 ? details.substring(0, 400) + "…" : details;
+        String actionLine   = (action != null && !action.isBlank())
+                ? "\n🎯 " + escapeHtml(action)
+                : "";
         return """
                 %s <b>%s</b> — %s
                 %s
-                <i>%s</i>
+                <i>%s</i>%s
                 """.formatted(
                 trigger.level().emoji(),
                 trigger.level().label(),
                 escapeHtml(trigger.shortLabel()),
                 escapeHtml(summary),
-                escapeHtml(shortDetails)
+                escapeHtml(shortDetails),
+                actionLine
         );
     }
 

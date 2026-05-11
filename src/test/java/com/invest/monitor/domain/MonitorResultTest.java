@@ -11,7 +11,7 @@ class MonitorResultTest {
             "YTM > 15%",
             TriggerLevel.Critical.INSTANCE,
             TriggerFrequency.DAILY,
-            true
+            true, null
     );
 
     private static final Trigger WARNING_TRIGGER = new Trigger(
@@ -19,7 +19,7 @@ class MonitorResultTest {
             "Рейтинг снижен ниже BB+",
             TriggerLevel.Warning.INSTANCE,
             TriggerFrequency.MONTHLY,
-            true
+            true, null
     );
 
     // ── Фабричные методы ─────────────────────────────────────────────
@@ -45,14 +45,14 @@ class MonitorResultTest {
 
     @Test
     void compactConstructor_nullSummaryBecomesDefault() {
-        MonitorResult result = new MonitorResult(CRITICAL_TRIGGER, true, null, "d", null, null);
+        MonitorResult result = new MonitorResult(CRITICAL_TRIGGER, true, null, "d", null, null, null);
         assertThat(result.summary()).isEqualTo("Триггер сработал");
         assertThat(result.checkedAt()).isNotNull();
     }
 
     @Test
     void compactConstructor_nullDetailsBecomesEmpty() {
-        MonitorResult result = new MonitorResult(CRITICAL_TRIGGER, false, "ok", null, null, null);
+        MonitorResult result = new MonitorResult(CRITICAL_TRIGGER, false, "ok", null, null, null, null);
         assertThat(result.details()).isEqualTo("");
     }
 
@@ -92,7 +92,7 @@ class MonitorResultTest {
                 "price < 90%",
                 TriggerLevel.Critical.INSTANCE,
                 TriggerFrequency.DAILY,
-                true
+                true, null
         );
         MonitorResult result = MonitorResult.fired(triggerWithHtml, "price < 90%", "<b>детали</b>");
         String msg = result.toTelegramMessage();

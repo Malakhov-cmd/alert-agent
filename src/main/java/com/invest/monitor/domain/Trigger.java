@@ -9,6 +9,7 @@ package com.invest.monitor.domain;
  * @param level     Уровень сигнала (Critical / Warning)
  * @param frequency Частота проверки
  * @param active    Триггер активен (не зачёркнут, не в архиве)
+ * @param position  Текущая доля в портфеле и лимит (опционально, из колонки «Позиция»)
  */
 public record Trigger(
         String           isin,
@@ -16,8 +17,12 @@ public record Trigger(
         String           condition,
         TriggerLevel     level,
         TriggerFrequency frequency,
-        boolean          active
+        boolean          active,
+        Position         position
 ) {
+    /** Доля бумаги в портфеле и разрешённый лимит (в процентах). */
+    public record Position(double share, double limit) {}
+
     /** Компактная метка для логов и промптов. */
     public String shortLabel() {
         return "[%s] %s".formatted(isin, name);

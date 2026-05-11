@@ -38,11 +38,15 @@ public class TriggerCheckHistory {
     @Column(length = 10)
     private String confidence;
 
+    @Column(length = 200)
+    private String action;
+
     protected TriggerCheckHistory() {}
 
     public TriggerCheckHistory(String isin, String name, String conditionText,
                                 LocalDateTime checkedAt, String runMode,
-                                boolean fired, String summary, String details, String confidence) {
+                                boolean fired, String summary, String details,
+                                String confidence, String action) {
         this.isin          = isin;
         this.name          = name;
         this.conditionText = conditionText;
@@ -52,5 +56,6 @@ public class TriggerCheckHistory {
         this.summary       = summary;
         this.details       = details;
         this.confidence    = confidence;
+        this.action        = action;
     }
 }

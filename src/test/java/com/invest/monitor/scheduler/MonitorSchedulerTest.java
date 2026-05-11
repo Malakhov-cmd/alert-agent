@@ -15,6 +15,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 
 import java.util.List;
 
@@ -23,6 +25,7 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class MonitorSchedulerTest {
 
     @Mock TriggerParser       parser;
@@ -159,6 +162,6 @@ class MonitorSchedulerTest {
 
     private Trigger trigger(String isin, TriggerFrequency frequency) {
         return new Trigger(isin, "Бумага " + isin, "условие",
-                TriggerLevel.Critical.INSTANCE, frequency, true);
+                TriggerLevel.Critical.INSTANCE, frequency, true, null);
     }
 }

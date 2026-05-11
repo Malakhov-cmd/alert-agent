@@ -147,6 +147,14 @@ public class MonitorAgent {
         msg.put("name", triggers.get(0).name());
         msg.put("triggers", triggerList);
 
+        Trigger.Position position = triggers.get(0).position();
+        if (position != null) {
+            Map<String, String> pos = new LinkedHashMap<>();
+            pos.put("share", position.share() + "%");
+            pos.put("limit", position.limit() + "%");
+            msg.put("position", pos);
+        }
+
         try {
             return mapper.writerWithDefaultPrettyPrinter().writeValueAsString(msg);
         } catch (Exception e) {
@@ -156,11 +164,12 @@ public class MonitorAgent {
 
     private String formatPreviousResult(Optional<TriggerState> state) {
         return state.map(s -> {
-            String status = s.getLastFiredAt() != null
+            String status  = s.getLastFiredAt() != null
                     && !s.getLastFiredAt().isBefore(LocalDate.now().minusDays(1))
                     ? "FIRED" : "OK";
-            String conf = s.getLastConfidence() != null ? s.getLastConfidence() : "unknown";
-            return status + ", " + conf + ", " + s.getLastCheckedAt();
+            String conf    = s.getLastConfidence() != null ? s.getLastConfidence() : "unknown";
+            String summary = s.getLastSummary()    != null ? ". " + s.getLastSummary() : "";
+            return status + ", " + conf + ", " + s.getLastCheckedAt() + summary;
         }).orElse(null);
     }
 
@@ -189,8 +198,8 @@ public class MonitorAgent {
                 if (i < responses.size()) {
                     AgentResponse r = responses.get(i);
                     results.add(r.fired()
-                            ? MonitorResult.fired(t, r.summary(), r.details(), r.confidence())
-                            : MonitorResult.ok(t, r.details(), r.confidence()));
+                            ? MonitorResult.fired(t, r.summary(), r.details(), r.confidence(), r.action())
+                            : MonitorResult.ok(t, r.details(), r.confidence(), r.action()));
                 } else {
                     results.add(MonitorResult.ok(t, "Нет ответа от агента"));
                 }
@@ -229,6 +238,7 @@ public class MonitorAgent {
             boolean fired,
             String  summary,
             String  details,
-            String  confidence
+            String  confidence,
+            String  action
     ) {}
 }
