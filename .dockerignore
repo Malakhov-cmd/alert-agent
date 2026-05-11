@@ -1,0 +1,8 @@
+.git
+.idea
+*.iml
+target/
+.env
+.env.local
+*.md
+.claude/

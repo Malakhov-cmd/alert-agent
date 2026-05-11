@@ -21,16 +21,17 @@ class TriggerParserTest {
 
     @BeforeEach
     void setUp() throws URISyntaxException {
-        // Тестовый vault лежит в src/test/resources/vault
         Path vaultPath = Path.of(
                 Objects.requireNonNull(getClass().getClassLoader().getResource("vault")).toURI()
         );
         MonitorConfig config = new MonitorConfig(
                 vaultPath.toString(), "daily", 0L,
                 new MonitorConfig.Anthropic("test-key", "claude-sonnet-4-6"),
-                new MonitorConfig.Telegram("test-token", "test-chat"),
-                new MonitorConfig.Search("test-tavily-key", 5),
-                new MonitorConfig.Prompt("test system prompt")
+                new MonitorConfig.Telegram("test-token", "test-chat", ""),
+                new MonitorConfig.Search("test-tavily-key", 5, List.of(), "", false, 3),
+                new MonitorConfig.Prompt("test system prompt"),
+                "Europe/Moscow", "anthropic",
+                new MonitorConfig.Google("", "gemini-2.5-flash", "")
         );
         parser = new TriggerParser(config);
     }
@@ -40,7 +41,6 @@ class TriggerParserTest {
     @Test
     void parse_returnsAllRows() {
         List<Trigger> all = parser.parse();
-        // 5 строк в fixture (1 неактивная)
         assertThat(all).hasSize(5);
     }
 
@@ -111,9 +111,11 @@ class TriggerParserTest {
         MonitorConfig badConfig = new MonitorConfig(
                 "/несуществующий/путь", "daily", 0L,
                 new MonitorConfig.Anthropic("k", "m"),
-                new MonitorConfig.Telegram("t", "c"),
-                new MonitorConfig.Search("s", 5),
-                new MonitorConfig.Prompt("test prompt")
+                new MonitorConfig.Telegram("t", "c", ""),
+                new MonitorConfig.Search("s", 5, List.of(), "", false, 3),
+                new MonitorConfig.Prompt("test prompt"),
+                "Europe/Moscow", "anthropic",
+                new MonitorConfig.Google("", "gemini-2.5-flash", "")
         );
         TriggerParser badParser = new TriggerParser(badConfig);
 

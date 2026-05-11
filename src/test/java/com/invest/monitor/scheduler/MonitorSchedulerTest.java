@@ -7,6 +7,7 @@ import com.invest.monitor.domain.Trigger;
 import com.invest.monitor.domain.TriggerFrequency;
 import com.invest.monitor.domain.TriggerLevel;
 import com.invest.monitor.parser.TriggerParser;
+import com.invest.monitor.state.TriggerStateService;
 import com.invest.monitor.telegram.TelegramNotifier;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -14,6 +15,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 
 import java.util.List;
 
@@ -22,24 +25,27 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class MonitorSchedulerTest {
 
-    @Mock TriggerParser    parser;
-    @Mock MonitorAgent     agent;
-    @Mock TelegramNotifier notifier;
+    @Mock TriggerParser       parser;
+    @Mock MonitorAgent        agent;
+    @Mock TelegramNotifier    notifier;
+    @Mock TriggerStateService stateService;
 
-    // Триггеры разных частот
-    private final Trigger daily1   = trigger("RU0001", TriggerFrequency.DAILY);
-    private final Trigger daily2   = trigger("RU0002", TriggerFrequency.DAILY);
-    private final Trigger weekly   = trigger("RU0003", TriggerFrequency.WEEKLY);
-    private final Trigger monthly  = trigger("RU0004", TriggerFrequency.MONTHLY);
+    private final Trigger daily1    = trigger("RU0001", TriggerFrequency.DAILY);
+    private final Trigger daily2    = trigger("RU0002", TriggerFrequency.DAILY);
+    private final Trigger weekly    = trigger("RU0003", TriggerFrequency.WEEKLY);
+    private final Trigger monthly   = trigger("RU0004", TriggerFrequency.MONTHLY);
     private final Trigger quarterly = trigger("RU0005", TriggerFrequency.QUARTERLY);
 
     @BeforeEach
     void setUp() {
-        when(parser.parseActive()).thenReturn(
+        lenient().when(parser.parseActive()).thenReturn(
                 List.of(daily1, daily2, weekly, monthly, quarterly)
         );
+        // По умолчанию: триггеры ещё не проверялись в текущем периоде
+        lenient().when(stateService.alreadyCheckedThisPeriod(any(), any())).thenReturn(false);
     }
 
     // ── Фильтрация по частоте ────────────────────────────────────────
@@ -85,6 +91,18 @@ class MonitorSchedulerTest {
         verify(notifier, never()).notifyFired(anyList());
     }
 
+    // ── Уже проверен в этом периоде — пропускаем ────────────────────
+
+    @Test
+    void run_alreadyChecked_skipsAndDoesNotCallAgent() {
+        when(stateService.alreadyCheckedThisPeriod(any(), any())).thenReturn(true);
+
+        MonitorScheduler scheduler = makeScheduler("scheduled");
+        scheduler.run(TriggerFrequency.DAILY, "daily");
+
+        verify(agent, never()).checkAll(anyList());
+    }
+
     // ── Нотификация только сработавших ───────────────────────────────
 
     @Test
@@ -101,7 +119,6 @@ class MonitorSchedulerTest {
         ArgumentCaptor<List<MonitorResult>> captor = ArgumentCaptor.forClass(List.class);
         verify(notifier).notifyFired(captor.capture());
 
-        // notifyFired получает весь список, фильтрацию делает TelegramNotifier
         assertThat(captor.getValue()).containsExactlyInAnyOrder(fired, ok);
     }
 
@@ -135,15 +152,17 @@ class MonitorSchedulerTest {
         MonitorConfig config = new MonitorConfig(
                 "./vault", runMode, 0L,
                 new MonitorConfig.Anthropic("key", "model"),
-                new MonitorConfig.Telegram("token", "chat"),
-                new MonitorConfig.Search("tavily-key", 5),
-                new MonitorConfig.Prompt("test system prompt")
+                new MonitorConfig.Telegram("token", "chat", ""),
+                new MonitorConfig.Search("tavily-key", 5, List.of(), "", false, 3),
+                new MonitorConfig.Prompt("test system prompt"),
+                "Europe/Moscow", "anthropic",
+                new MonitorConfig.Google("", "gemini-2.5-flash", "")
         );
-        return new MonitorScheduler(parser, agent, notifier, config);
+        return new MonitorScheduler(parser, agent, notifier, stateService, config);
     }
 
     private Trigger trigger(String isin, TriggerFrequency frequency) {
         return new Trigger(isin, "Бумага " + isin, "условие",
-                TriggerLevel.Critical.INSTANCE, frequency, true);
+                TriggerLevel.Critical.INSTANCE, frequency, true, null, null);
     }
 }

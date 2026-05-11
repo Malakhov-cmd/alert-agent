@@ -22,17 +22,19 @@ public class AgentTools {
 
     private static final Logger log = LoggerFactory.getLogger(AgentTools.class);
 
-    private static final String TAVILY_URL = "https://api.tavily.com";
-
-    private final String tavilyApiKey;
-    private final int    maxResults;
-    private final RestClient restClient;
+    private final String       tavilyApiKey;
+    private final int          maxResults;
+    private final List<String> includeDomains;
+    private final boolean      stub;
+    private final RestClient   restClient;
 
     public AgentTools(MonitorConfig config, RestClient.Builder builder) {
         MonitorConfig.Search search = config.search();
-        this.tavilyApiKey = search.tavilyApiKey();
-        this.maxResults   = search.maxResults();
-        this.restClient   = builder.baseUrl(TAVILY_URL).build();
+        this.tavilyApiKey   = search.tavilyApiKey();
+        this.maxResults     = search.maxResults();
+        this.includeDomains = search.includeDomains();
+        this.stub           = search.stub();
+        this.restClient     = builder.baseUrl(search.tavilyUrl()).build();
     }
 
     // ── Tools ────────────────────────────────────────────────────────
@@ -53,17 +55,19 @@ public class AgentTools {
     public String webSearch(String query) {
         log.debug("web_search: «{}»", query);
 
+        if (stub) {
+            log.warn("[STUB] Tavily заглушка активна — возвращаем фиктивный ответ для: «{}»", query);
+            return "[STUB] Данные поиска недоступны в режиме разработки. " +
+                   "Запрос: «" + query + "». " +
+                   "Используйте этот ответ только для проверки формата JSON-ответа агента.";
+        }
+
         Map<String, Object> body = Map.of(
-                "api_key",        tavilyApiKey,
-                "query",          query,
-                "max_results",    maxResults,
-                "search_depth",   "advanced",
-                // фокусируемся на финансовых источниках
-                "include_domains", List.of(
-                        "cbr.ru", "moex.com", "rusbonds.ru",
-                        "finam.ru", "smartlab.ru", "ria.ru",
-                        "interfax.ru", "bloomberg.com"
-                )
+                "api_key",         tavilyApiKey,
+                "query",           query,
+                "max_results",     maxResults,
+                "search_depth",    "advanced",
+                "include_domains", includeDomains
         );
 
         try {

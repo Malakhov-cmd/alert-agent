@@ -1,0 +1,44 @@
+services:
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: alertagent
+      POSTGRES_USER: alertagent
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U alertagent -d alertagent"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/alertagent
+      SPRING_DATASOURCE_USERNAME: alertagent
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-not-configured}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      AGENT_PROVIDER: ${AGENT_PROVIDER:-anthropic}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID}
+      TAVILY_API_KEY: ${TAVILY_API_KEY:-not-configured}
+      VAULT_PATH: /vault
+      RUN_MODE: ${RUN_MODE:-scheduled}
+      MONITOR_TIMEZONE: ${MONITOR_TIMEZONE:-Europe/Moscow}
+    volumes:
+      - ${HOST_VAULT_PATH}:/vault:ro
+
+volumes:
+  pg_data:
