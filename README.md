@@ -71,6 +71,7 @@
 | `SPRING_DATASOURCE_PASSWORD` | — | Пароль БД |
 | `RUN_MODE` | — | Режим запуска (см. [таблицу](#все-режимы-run_mode)), по умолчанию `daily` |
 | `GEMINI_MODEL` | — | Модель Gemini, по умолчанию `gemini-2.5-flash` |
+| `MONITOR_HISTORY_SIZE` | — | Глубина истории проверок передаваемой агенту, по умолчанию `3` |
 | `MONITOR_TIMEZONE` | — | Часовой пояс расписания (IANA), по умолчанию `Europe/Moscow` |
 | `SPRING_PROFILES_ACTIVE` | — | `dev` — включает stub-режим и SQL-логи |
 
@@ -212,7 +213,7 @@ Obsidian vault (MD-файл)
   MonitorAgent           Группирует по ISIN, для каждого ISIN (с паузой между ними):
         │
         ├─► ANTHROPIC    Один запрос = один ISIN со всеми триггерами + позицией
-        │   Claude       Системный промпт + список условий + previous_result из БД
+        │   Claude       Системный промпт + список условий + previous_results (история N проверок) из БД
         │   (tool-use)       │
         │                    ▼
         │               AgentTools.webSearch → Tavily API (до 3 раз на ISIN)
@@ -602,6 +603,7 @@ monitor:
   search:
     stub: false                  # true — заглушка вместо реального LLM/Tavily
     max-results: 3               # результатов Tavily на один запрос (только для anthropic)
+    history-size: 3              # сколько последних проверок передавать агенту как previous_results
     include-domains:             # приоритетные источники для Tavily
       - acra-ratings.ru
       - moex.com
