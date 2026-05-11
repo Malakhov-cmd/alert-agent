@@ -12,32 +12,45 @@
 3. [Откуда брать секреты](#откуда-брать-секреты)
 4. [Как устроен vault](#как-устроен-vault)
 5. [Полный цикл работы](#полный-цикл-работы)
-6. [Сценарии запуска](#сценарии-запуска)
-7. [Тонкая настройка](#тонкая-настройка)
-8. [Как выглядит сообщение в Telegram](#как-выглядит-сообщение-в-telegram)
-9. [Структура проекта](#структура-проекта)
+6. [Когда триггер берётся в работу](#когда-триггер-берётся-в-работу)
+7. [Сценарии запуска](#сценарии-запуска)
+8. [Тонкая настройка](#тонкая-настройка)
+9. [Как выглядит сообщение в Telegram](#как-выглядит-сообщение-в-telegram)
+10. [Структура проекта](#структура-проекта)
 
 ---
 
 ## Что делает агент
 
 1. Читает таблицу триггеров из файла Obsidian vault
-2. Для каждого активного триггера запускает Claude (`claude-sonnet-4-6`) в режиме tool-use
-3. Claude делает до 2 поисковых запросов через Tavily (YTM, новости, рейтинги)
-4. Если условие триггера выполнено — отправляет сигнал 🚨 или ⚠️ в Telegram
-5. Между проверками держит паузу (по умолчанию 60 сек) чтобы не превысить rate limit API
-6. Запускается по расписанию: ежедневно / еженедельно / ежемесячно / ежеквартально
+2. Проверяет по базе данных, не был ли триггер уже проверен в текущем периоде
+3. Для каждого нового триггера запускает Claude (`claude-sonnet-4-6`) в режиме tool-use
+4. Claude делает до 2 поисковых запросов через Tavily (YTM, новости, рейтинги)
+5. Если условие триггера выполнено — отправляет сигнал 🚨 или ⚠️ в Telegram
+6. Сохраняет дату проверки (и срабатывания) в PostgreSQL
+7. Между проверками держит паузу (по умолчанию 60 сек), чтобы не превысить rate limit API
+8. Запускается по расписанию: ежедневно / еженедельно / ежемесячно / ежеквартально
 
 ---
 
 ## Что нужно для запуска
 
-### Программное обеспечение
+### Docker (рекомендуется)
+
+Всё, что нужно — Docker и docker-compose. PostgreSQL поднимается автоматически в соседнем контейнере.
+
+```bash
+cp .env.example .env   # заполни .env своими ключами и путём к vault
+docker compose up --build
+```
+
+### Локально (без Docker)
 
 | Что | Версия | Зачем |
 |-----|--------|-------|
 | JDK | 21+ | сборка и запуск |
 | Maven | 3.9+ | сборка |
+| PostgreSQL | 14+ | хранение состояния триггеров |
 
 ### Переменные окружения
 
@@ -47,19 +60,14 @@
 | `TELEGRAM_BOT_TOKEN` | ✅ | Токен Telegram-бота |
 | `TELEGRAM_CHAT_ID` | ✅ | ID чата/канала для сигналов |
 | `TAVILY_API_KEY` | ✅ | Ключ поискового API |
-| `VAULT_PATH` | ✅ | Путь к папке vault, внутри которой есть `Invest/` |
+| `VAULT_PATH` | ✅ | Путь к папке vault внутри контейнера (обычно `/vault`) |
+| `HOST_VAULT_PATH` | ✅ (Docker) | Путь к vault на хосте — монтируется в контейнер |
+| `POSTGRES_PASSWORD` | ✅ (Docker) | Пароль PostgreSQL |
+| `SPRING_DATASOURCE_URL` | — | URL БД, по умолчанию `jdbc:postgresql://localhost:5432/alertagent` |
+| `SPRING_DATASOURCE_USERNAME` | — | Пользователь БД, по умолчанию `alertagent` |
+| `SPRING_DATASOURCE_PASSWORD` | — | Пароль БД |
 | `RUN_MODE` | — | Режим запуска (см. [Сценарии](#сценарии-запуска)), по умолчанию `daily` |
-
-### Минимальный `.env` для локального запуска
-
-```bash
-ANTHROPIC_API_KEY=sk-ant-...
-TELEGRAM_BOT_TOKEN=7123456789:AAF...
-TELEGRAM_CHAT_ID=-1001234567890
-TAVILY_API_KEY=tvly-...
-VAULT_PATH=/Users/you/Obsidian/work_brain/Invest
-RUN_MODE=monthly
-```
+| `MONITOR_TIMEZONE` | — | Часовой пояс расписания (IANA), по умолчанию `Europe/Moscow` |
 
 ---
 
@@ -114,12 +122,6 @@ RUN_MODE=monthly
     └── Мониторинг триггеров.md   ← главный файл
 ```
 
-**Пример:** если vault лежит в `/Users/you/Obsidian/work_brain/Invest`, то:
-```bash
-VAULT_PATH=/Users/you/Obsidian/work_brain/Invest
-# агент прочитает: /Users/you/Obsidian/work_brain/Invest/Invest/Мониторинг триггеров.md
-```
-
 ### Формат файла `Мониторинг триггеров.md`
 
 Файл должен содержать Markdown-таблицу. Порядок колонок произвольный — парсер определяет их по заголовку.
@@ -143,16 +145,16 @@ VAULT_PATH=/Users/you/Obsidian/work_brain/Invest
 **Частота:**
 | В таблице | Расписание |
 |-----------|------------|
-| `Ежедневно` / `daily` | Каждый день 09:00 МСК |
-| `Еженедельно` / `weekly` | Понедельник 09:00 МСК |
-| `Ежемесячно` / `monthly` | 1-е число 09:00 МСК |
-| `Ежеквартально` / `quarterly` | 1 янв / апр / июл / окт 09:00 МСК |
+| `Ежедневно` / `daily` | Каждый день 09:00 по таймзоне |
+| `Еженедельно` / `weekly` | Понедельник 09:00 |
+| `Ежемесячно` / `monthly` | 1-е число 09:00 |
+| `Ежеквартально` / `quarterly` | 1 янв / апр / июл / окт 09:00 |
 
 **Активен:** `да` / `yes` / `true` / `✓` / `+` — всё остальное отключает триггер без удаления строки.
 
 ### Синхронизация через Obsidian Git
 
-Агент читает файлы напрямую с диска. Если vault синхронизируется через Obsidian Git плагин — просто укажи `VAULT_PATH` на локальную копию, остальное делает плагин.
+Агент читает файлы напрямую с диска. Если vault синхронизируется через Obsidian Git плагин — просто укажи `HOST_VAULT_PATH` на локальную копию, остальное делает плагин.
 
 ---
 
@@ -165,7 +167,10 @@ Obsidian vault (MD-файл)
   TriggerParser          Читает таблицу, парсит строки в Trigger-records
         │                Фильтрует: active=true + нужная частота
         ▼
-  MonitorAgent           Для каждого триггера (с паузой 60 сек между ними):
+  TriggerStateService    Проверяет по PostgreSQL: уже обработан в этом периоде?
+        │                Да → пропустить. Нет → передать агенту
+        ▼
+  MonitorAgent           Для каждого нового триггера (с паузой 60 сек между ними):
         │
         ├─► Claude API   Системный промпт из application.yml:
         │   (tool-use)   роль, процесс, формат JSON-ответа
@@ -178,6 +183,9 @@ Obsidian vault (MD-файл)
         │       ▼
         │   Claude       Анализирует результаты, возвращает JSON:
         │                { fired, summary, details, confidence }
+        │
+        ▼
+  TriggerStateService    Сохраняет last_checked_at (и last_fired_at если сработал)
         │
         ▼
   MonitorResult          fired=true → сигнал, fired=false → норма
@@ -193,20 +201,97 @@ Claude делает **не более 2 поисковых запросов** н
 
 ---
 
+## Когда триггер берётся в работу
+
+Перед каждым запуском агент проверяет таблицу `trigger_state` в PostgreSQL. Триггер **пропускается** (не отправляется Claude), если он уже был проверен в текущем периоде.
+
+### Определение «текущего периода»
+
+Для каждой частоты период определяется по-своему:
+
+| Частота | Триггер пропускается, если `last_checked_at`... |
+|---------|------------------------------------------------|
+| `DAILY` | равна сегодняшней дате |
+| `WEEKLY` | не раньше понедельника текущей недели |
+| `MONTHLY` | совпадает по году и месяцу с сегодняшней датой |
+| `QUARTERLY` | совпадает по году и кварталу с сегодняшней датой |
+
+**Квартал** определяется как `(месяц - 1) / 3 + 1`: январь–март = Q1, апрель–июнь = Q2 и т. д.
+
+### Алгоритм шаг за шагом
+
+```
+Для каждого активного триггера нужной частоты:
+
+  1. Ищем запись (isin, frequency) в таблице trigger_state.
+
+  2. Запись не найдена
+       → триггер никогда не проверялся
+       → берём в работу
+
+  3. Запись найдена, last_checked_at НЕ входит в текущий период
+       → предыдущая проверка была в прошлом цикле
+       → берём в работу
+
+  4. Запись найдена, last_checked_at входит в текущий период
+       → триггер уже проверен в этом цикле
+       → пропускаем (0 токенов)
+
+После успешной проверки агентом:
+  → обновляем last_checked_at = сегодня
+  → если fired=true, обновляем last_fired_at = сегодня
+```
+
+### Почему это важно
+
+Без персистентного состояния каждый перезапуск приложения заново прогоняет все триггеры через Claude. При `RUN_MODE=scheduled` это не проблема (крон запускается раз в день/неделю), но при сбое контейнера и его перезапуске в тот же день все ежедневные триггеры будут проверены повторно — лишние расходы токенов и дублирующиеся Telegram-сообщения.
+
+PostgreSQL устраняет эту проблему: даже после 10 перезапусков в один день каждый триггер проверяется ровно один раз за период.
+
+### Схема таблицы
+
+```sql
+CREATE TABLE trigger_state (
+    isin            VARCHAR(12) NOT NULL,
+    frequency       VARCHAR(20) NOT NULL,
+    last_checked_at DATE        NOT NULL,
+    last_fired_at   DATE,
+    PRIMARY KEY (isin, frequency)
+);
+```
+
+Миграция применяется автоматически при старте через Flyway.
+
+---
+
 ## Сценарии запуска
+
+### Docker Compose (рекомендуется)
+
+```bash
+# 1. Скопируй шаблон и заполни своими данными
+cp .env.example .env
+
+# 2. Запуск — PostgreSQL поднимается автоматически
+docker compose up --build
+
+# 3. Только пересобрать образ приложения (без остановки БД)
+docker compose up --build app
+```
+
+PostgreSQL хранит данные в именованном volume `pg_data` — они сохраняются между перезапусками.
 
 ### Локально (разовый прогон)
 
 ```bash
-# Сборка
+# PostgreSQL должен быть запущен отдельно
 mvn clean package -DskipTests
 
-# Запуск — сразу проверит monthly-триггеры
 ANTHROPIC_API_KEY=sk-ant-... \
 TELEGRAM_BOT_TOKEN=7123456789:AAF... \
 TELEGRAM_CHAT_ID=123456789 \
 TAVILY_API_KEY=tvly-... \
-VAULT_PATH=/Users/you/Obsidian/work_brain/Invest \
+VAULT_PATH=/Users/you/Obsidian/Invest \
 RUN_MODE=monthly \
 java --enable-preview -jar target/alert-agent-0.1.0-SNAPSHOT.jar
 ```
@@ -218,27 +303,6 @@ RUN_MODE=scheduled java --enable-preview -jar alert-agent.jar
 ```
 
 При `RUN_MODE=scheduled` прогон при старте **не выполняется** — агент ждёт расписания.
-
-### Docker
-
-```dockerfile
-FROM eclipse-temurin:21-jre
-COPY target/alert-agent-0.1.0-SNAPSHOT.jar /app/agent.jar
-ENTRYPOINT ["java", "--enable-preview", "-jar", "/app/agent.jar"]
-```
-
-```bash
-docker build -t alert-agent .
-docker run \
-  -e ANTHROPIC_API_KEY=... \
-  -e TELEGRAM_BOT_TOKEN=... \
-  -e TELEGRAM_CHAT_ID=... \
-  -e TAVILY_API_KEY=... \
-  -e VAULT_PATH=/vault \
-  -e RUN_MODE=scheduled \
-  -v /path/to/vault:/vault \
-  alert-agent
-```
 
 ### Все режимы `RUN_MODE`
 
@@ -254,17 +318,25 @@ docker run \
 
 ## Тонкая настройка
 
-Все параметры можно переопределить без пересборки — через `application.yml` или аргументы командной строки.
+Все параметры можно переопределить без пересборки — через `application.yml`, переменные окружения или аргументы командной строки.
 
 ### Ключевые параметры `application.yml`
 
 ```yaml
 monitor:
+  timezone: Europe/Moscow        # часовой пояс расписания (IANA)
   delay-between-checks-sec: 60   # пауза между триггерами (сек)
   search:
     max-results: 2               # результатов Tavily на один поиск
+    include-domains:             # источники для поиска
+      - cbr.ru
+      - moex.com
+      - rusbonds.ru
+    tavily-url: https://api.tavily.com          # URL Tavily API
+  telegram:
+    api-base-url: https://api.telegram.org/bot  # URL Telegram Bot API
   prompt:
-    system: |                    # системный промпт агента — редактируется без пересборки
+    system: |                    # системный промпт — редактируется без пересборки
       Ты — инвестиционный аналитик...
 
 spring:
@@ -282,6 +354,10 @@ spring:
 # Ускоренный тест — пауза 10 сек вместо 60
 java --enable-preview -jar alert-agent.jar \
   --monitor.delay-between-checks-sec=10
+
+# Другой часовой пояс
+java --enable-preview -jar alert-agent.jar \
+  --monitor.timezone=Asia/Almaty
 
 # Другая модель
 java --enable-preview -jar alert-agent.jar \
@@ -348,11 +424,18 @@ src/main/java/com/invest/monitor/
 │   └── TriggerParser.java         — читает MD-таблицу из vault
 ├── scheduler/
 │   └── MonitorScheduler.java      — @Scheduled расписание + startup run
+├── state/
+│   ├── TriggerState.java          — JPA-сущность: (isin, frequency) → даты проверки
+│   ├── TriggerStateId.java        — составной ключ для JPA
+│   ├── TriggerStateRepository.java — Spring Data репозиторий
+│   └── TriggerStateService.java   — логика дедупликации по периодам
 └── telegram/
     └── TelegramNotifier.java      — RestClient → Telegram Bot API
 
 src/main/resources/
-└── application.yml                — вся конфигурация включая системный промпт
+├── application.yml                — вся конфигурация включая системный промпт
+└── db/migration/
+    └── V1__create_trigger_state.sql — Flyway: создание таблицы trigger_state
 
 src/test/
 ├── java/com/invest/monitor/
@@ -366,4 +449,8 @@ src/test/
 └── resources/
     └── vault/Invest/
         └── Мониторинг триггеров.md  — тестовый fixture
+
+Dockerfile                         — двухэтапная сборка: Maven → JRE alpine
+docker-compose.yml                 — app + PostgreSQL 16
+.env.example                       — шаблон переменных окружения
 ```
