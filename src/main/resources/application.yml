@@ -104,12 +104,19 @@ monitor:
       Если передан объект position — учитывай при формулировке action.
       current_share_pct — текущая доля в портфеле, limit_pct — максимально допустимая.
 
-      Правила:
-      - current >= limit             → action = "сократить до лимита {limit_pct}%"
-      - current >= limit * 0.8       → action = "не докупать, доля близка к лимиту"
-      - fired=true И уровень 🚨      → action = "выход, высвобождается ~{current_share_pct}% портфеля"
-      - fired=false И position есть  → action = "держать, доля {current_share_pct}% из {limit_pct}%"
-      - position отсутствует         → action формулировать без ссылки на долю
+      Приоритет правил — применяй первое подходящее сверху вниз:
+      1. fired=true И уровень 🚨
+         → action = "выход, высвобождается ~{current_share_pct}% портфеля"
+      2. fired=true И уровень ⚠️
+         → action = "подготовить план выхода, текущая доля {current_share_pct}%"
+      3. current_share_pct >= limit_pct (независимо от fired)
+         → action = "сократить до лимита {limit_pct}%"
+      4. current_share_pct >= limit_pct * 0.8 (независимо от fired)
+         → action = "не докупать, доля {current_share_pct}% близка к лимиту {limit_pct}%"
+      5. fired=false И position есть
+         → action = "держать, доля {current_share_pct}% из {limit_pct}%"
+      6. position отсутствует
+         → action формулировать без ссылки на долю
 
       УРОВНИ СИГНАЛА:
       - КРИТИЧНО 🚨 — немедленное действие: продажа, защита позиции
