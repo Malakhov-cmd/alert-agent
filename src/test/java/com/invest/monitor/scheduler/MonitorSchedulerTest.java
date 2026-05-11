@@ -41,11 +41,11 @@ class MonitorSchedulerTest {
 
     @BeforeEach
     void setUp() {
-        when(parser.parseActive()).thenReturn(
+        lenient().when(parser.parseActive()).thenReturn(
                 List.of(daily1, daily2, weekly, monthly, quarterly)
         );
         // По умолчанию: триггеры ещё не проверялись в текущем периоде
-        when(stateService.alreadyCheckedThisPeriod(any(), any())).thenReturn(false);
+        lenient().when(stateService.alreadyCheckedThisPeriod(any(), any())).thenReturn(false);
     }
 
     // ── Фильтрация по частоте ────────────────────────────────────────
@@ -162,6 +162,6 @@ class MonitorSchedulerTest {
 
     private Trigger trigger(String isin, TriggerFrequency frequency) {
         return new Trigger(isin, "Бумага " + isin, "условие",
-                TriggerLevel.Critical.INSTANCE, frequency, true, null);
+                TriggerLevel.Critical.INSTANCE, frequency, true, null, null);
     }
 }

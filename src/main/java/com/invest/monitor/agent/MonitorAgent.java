@@ -147,11 +147,14 @@ public class MonitorAgent {
         msg.put("name", triggers.get(0).name());
         msg.put("triggers", triggerList);
 
-        Trigger.Position position = triggers.get(0).position();
-        if (position != null) {
-            Map<String, String> pos = new LinkedHashMap<>();
-            pos.put("share", position.share() + "%");
-            pos.put("limit", position.limit() + "%");
+        Double currentShare = triggers.stream().map(Trigger::currentSharePct)
+                .filter(java.util.Objects::nonNull).findFirst().orElse(null);
+        Double limitPct = triggers.stream().map(Trigger::limitPct)
+                .filter(java.util.Objects::nonNull).findFirst().orElse(null);
+        if (currentShare != null || limitPct != null) {
+            Map<String, Object> pos = new LinkedHashMap<>();
+            if (currentShare != null) pos.put("current_share_pct", currentShare);
+            if (limitPct    != null) pos.put("limit_pct", limitPct);
             msg.put("position", pos);
         }
 

@@ -133,6 +133,7 @@ public class TriggerParser {
         String rawFreq   = cell(cells, colIndex, "частота", "frequency");
         String rawActive = cell(cells, colIndex, "активен", "active", "статус");
 
+        Double[] pos = parsePosition(cells, colIndex);
         return new Trigger(
                 isin,
                 name,
@@ -140,7 +141,7 @@ public class TriggerParser {
                 TriggerLevel.of(rawLevel),
                 TriggerFrequency.of(rawFreq),
                 isActive(rawActive),
-                parsePosition(cells, colIndex)
+                pos[0], pos[1]
         );
     }
 
@@ -186,24 +187,32 @@ public class TriggerParser {
     }
 
     /**
-     * Парсит опциональную колонку «Позиция» формата «3%/5%» (текущая доля / лимит).
-     * Возвращает null если колонки нет или значение пустое/некорректное.
+     * Парсит опциональную колонку «Позиция» формата «18%/25%» (текущая доля / лимит).
+     * Поддерживает: «18%/25%», «0%/20%», «3%/» (лимит не указан), «» (нет данных).
+     * Возвращает Double[2] где элементы могут быть null.
      */
-    private Trigger.Position parsePosition(String[] cells, Map<String, Integer> colIndex) {
+    private Double[] parsePosition(String[] cells, Map<String, Integer> colIndex) {
         Integer idx = colIndex.get("позиция");
         if (idx == null) idx = colIndex.get("position");
-        if (idx == null || idx >= cells.length) return null;
+        if (idx == null || idx >= cells.length) return new Double[]{null, null};
 
-        String raw = cells[idx].replaceAll("[%\\s]", "");
-        if (raw.isEmpty() || raw.equals("-")) return null;
+        String raw = cells[idx].trim();
+        if (raw.isEmpty() || raw.equals("-")) return new Double[]{null, null};
 
-        String[] parts = raw.split("/");
-        if (parts.length != 2) return null;
+        String[] parts = raw.replaceAll("\\s", "").split("/", -1);
 
+        Double share = parseDouble(parts.length > 0 ? parts[0] : "", cells[idx], "долю");
+        Double limit = parseDouble(parts.length > 1 ? parts[1] : "", cells[idx], "лимит");
+        return new Double[]{share, limit};
+    }
+
+    private Double parseDouble(String raw, String originalCell, String fieldName) {
+        String cleaned = raw.replace("%", "");
+        if (cleaned.isEmpty()) return null;
         try {
-            return new Trigger.Position(Double.parseDouble(parts[0]), Double.parseDouble(parts[1]));
+            return Double.parseDouble(cleaned);
         } catch (NumberFormatException e) {
-            log.warn("Не удалось разобрать позицию: «{}»", cells[idx]);
+            log.warn("Не удалось разобрать {} позиции: «{}»", fieldName, originalCell);
             return null;
         }
     }

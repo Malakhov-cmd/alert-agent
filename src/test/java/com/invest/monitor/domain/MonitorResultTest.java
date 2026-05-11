@@ -11,7 +11,7 @@ class MonitorResultTest {
             "YTM > 15%",
             TriggerLevel.Critical.INSTANCE,
             TriggerFrequency.DAILY,
-            true, null
+            true, null, null
     );
 
     private static final Trigger WARNING_TRIGGER = new Trigger(
@@ -19,7 +19,7 @@ class MonitorResultTest {
             "Рейтинг снижен ниже BB+",
             TriggerLevel.Warning.INSTANCE,
             TriggerFrequency.MONTHLY,
-            true, null
+            true, null, null
     );
 
     // ── Фабричные методы ─────────────────────────────────────────────
@@ -92,7 +92,7 @@ class MonitorResultTest {
                 "price < 90%",
                 TriggerLevel.Critical.INSTANCE,
                 TriggerFrequency.DAILY,
-                true, null
+                true, null, null
         );
         MonitorResult result = MonitorResult.fired(triggerWithHtml, "price < 90%", "<b>детали</b>");
         String msg = result.toTelegramMessage();
