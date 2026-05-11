@@ -8,11 +8,23 @@ spring:
         options:
           model: ${monitor.anthropic.model:claude-sonnet-4-6}
           max-tokens: 1024
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/alertagent}
+    username: ${SPRING_DATASOURCE_USERNAME:alertagent}
+    password: ${SPRING_DATASOURCE_PASSWORD:alertagent}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
 
 monitor:
   vault-path: ${VAULT_PATH:./vault}
   run-mode: ${RUN_MODE:daily}
   delay-between-checks-sec: 60
+  timezone: ${MONITOR_TIMEZONE:Europe/Moscow}
   anthropic:
     api-key: ${ANTHROPIC_API_KEY}
     model: claude-sonnet-4-6
@@ -22,6 +34,15 @@ monitor:
   search:
     tavily-api-key: ${TAVILY_API_KEY}
     max-results: 2
+    include-domains:
+      - cbr.ru
+      - moex.com
+      - rusbonds.ru
+      - finam.ru
+      - smartlab.ru
+      - ria.ru
+      - interfax.ru
+      - bloomberg.com
   prompt:
     system: |
       Ты — инвестиционный аналитик, специализирующийся на российском долговом рынке.
