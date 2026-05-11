@@ -35,7 +35,7 @@ monitor:
     bot-token: ${TELEGRAM_BOT_TOKEN}
     chat-id: ${TELEGRAM_CHAT_ID}
   search:
-    tavily-api-key: ${TAVILY_API_KEY}
+    tavily-api-key: ${TAVILY_API_KEY:not-configured}
     max-results: 3
     include-domains:
       - acra-ratings.ru
