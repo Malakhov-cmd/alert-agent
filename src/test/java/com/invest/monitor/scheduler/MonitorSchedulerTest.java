@@ -119,21 +119,6 @@ class MonitorSchedulerTest {
         assertThat(captor.getValue()).containsExactlyInAnyOrder(fired, ok);
     }
 
-    // ── Состояние записывается после проверки ───────────────────────
-
-    @Test
-    void run_recordsStateForEachResult() {
-        MonitorResult fired = MonitorResult.fired(daily1, "YTM=16%", "детали");
-        MonitorResult ok    = MonitorResult.ok(daily2, "норма");
-
-        when(agent.checkAll(anyList())).thenReturn(List.of(fired, ok));
-
-        makeScheduler("scheduled").run(TriggerFrequency.DAILY, "daily");
-
-        verify(stateService).recordCheck(daily1, TriggerFrequency.DAILY, true);
-        verify(stateService).recordCheck(daily2, TriggerFrequency.DAILY, false);
-    }
-
     // ── Startup: run-mode маппинг ────────────────────────────────────
 
     @Test

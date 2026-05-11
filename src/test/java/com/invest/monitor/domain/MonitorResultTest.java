@@ -45,14 +45,14 @@ class MonitorResultTest {
 
     @Test
     void compactConstructor_nullSummaryBecomesDefault() {
-        MonitorResult result = new MonitorResult(CRITICAL_TRIGGER, true, null, "d", null);
+        MonitorResult result = new MonitorResult(CRITICAL_TRIGGER, true, null, "d", null, null);
         assertThat(result.summary()).isEqualTo("Триггер сработал");
         assertThat(result.checkedAt()).isNotNull();
     }
 
     @Test
     void compactConstructor_nullDetailsBecomesEmpty() {
-        MonitorResult result = new MonitorResult(CRITICAL_TRIGGER, false, "ok", null, null);
+        MonitorResult result = new MonitorResult(CRITICAL_TRIGGER, false, "ok", null, null, null);
         assertThat(result.details()).isEqualTo("");
     }
 

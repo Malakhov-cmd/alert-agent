@@ -26,8 +26,9 @@ import java.util.List;
  *   <li>QUARTERLY  — 1-го числа января, апреля, июля, октября в 09:00</li>
  * </ul>
  *
- * <p>Триггеры, уже проверенные в текущем периоде, пропускаются — это
- * защищает от повторных расходов токенов при перезапуске приложения.
+ * <p>Перед вызовом агента фильтрует триггеры: если ISIN уже проверен
+ * в текущем периоде (запись в trigger_state), его триггеры пропускаются.
+ * Сохранение результатов и истории выполняется внутри {@link MonitorAgent}.
  */
 @Component
 public class MonitorScheduler {
@@ -55,24 +56,16 @@ public class MonitorScheduler {
     // ── Расписание ───────────────────────────────────────────────────
 
     @Scheduled(cron = "0 0 9 * * *", zone = "${monitor.timezone:Europe/Moscow}")
-    public void runDaily() {
-        run(TriggerFrequency.DAILY, "daily");
-    }
+    public void runDaily() { run(TriggerFrequency.DAILY, "daily"); }
 
     @Scheduled(cron = "0 0 9 * * MON", zone = "${monitor.timezone:Europe/Moscow}")
-    public void runWeekly() {
-        run(TriggerFrequency.WEEKLY, "weekly");
-    }
+    public void runWeekly() { run(TriggerFrequency.WEEKLY, "weekly"); }
 
     @Scheduled(cron = "0 0 9 1 * *", zone = "${monitor.timezone:Europe/Moscow}")
-    public void runMonthly() {
-        run(TriggerFrequency.MONTHLY, "monthly");
-    }
+    public void runMonthly() { run(TriggerFrequency.MONTHLY, "monthly"); }
 
     @Scheduled(cron = "0 0 9 1 1,4,7,10 *", zone = "${monitor.timezone:Europe/Moscow}")
-    public void runQuarterly() {
-        run(TriggerFrequency.QUARTERLY, "quarterly");
-    }
+    public void runQuarterly() { run(TriggerFrequency.QUARTERLY, "quarterly"); }
 
     // ── Немедленный запуск при старте ────────────────────────────────
 
@@ -103,6 +96,7 @@ public class MonitorScheduler {
     void run(TriggerFrequency frequency, String label) {
         log.info("=== Запуск проверки [{}] ===", label);
 
+        // Фильтруем: активные + нужная частота + ISIN не проверялся в этом периоде
         List<Trigger> triggers = parser.parseActive().stream()
                 .filter(t -> t.frequency() == frequency)
                 .filter(t -> !stateService.alreadyCheckedThisPeriod(t, frequency))
@@ -115,8 +109,8 @@ public class MonitorScheduler {
 
         log.info("[{}] Триггеров к проверке: {}", label, triggers.size());
 
+        // MonitorAgent группирует по ISIN, вызывает Claude, сохраняет историю
         List<MonitorResult> results = agent.checkAll(triggers);
-        results.forEach(r -> stateService.recordCheck(r.trigger(), frequency, r.fired()));
 
         long firedCount = results.stream().filter(MonitorResult::fired).count();
         log.info("[{}] Проверено: {}, сработало: {}", label, results.size(), firedCount);

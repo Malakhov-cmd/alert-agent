@@ -237,9 +237,11 @@ Claude делает **не более 2 поисковых запросов** н
        → триггер уже проверен в этом цикле
        → пропускаем (0 токенов)
 
-После успешной проверки агентом:
-  → обновляем last_checked_at = сегодня
-  → если fired=true, обновляем last_fired_at = сегодня
+После успешной проверки агентом (один вызов Claude = один ISIN):
+  → для каждого триггера INSERT в trigger_check_history
+  → UPDATE trigger_state: last_checked_at = сегодня,
+                           last_fired_at = сегодня (если fired),
+                           last_summary / last_details / last_confidence
 ```
 
 ### Почему это важно
@@ -248,19 +250,60 @@ Claude делает **не более 2 поисковых запросов** н
 
 PostgreSQL устраняет эту проблему: даже после 10 перезапусков в один день каждый триггер проверяется ровно один раз за период.
 
-### Схема таблицы
+### Схема таблиц
 
 ```sql
+-- Последнее состояние по каждому ISIN + частота
 CREATE TABLE trigger_state (
     isin            VARCHAR(12) NOT NULL,
     frequency       VARCHAR(20) NOT NULL,
     last_checked_at DATE        NOT NULL,
     last_fired_at   DATE,
+    last_summary    TEXT,
+    last_details    TEXT,
+    last_confidence VARCHAR(10),
     PRIMARY KEY (isin, frequency)
+);
+
+-- Полная история каждой проверки
+CREATE TABLE trigger_check_history (
+    id             BIGSERIAL    PRIMARY KEY,
+    isin           VARCHAR(12)  NOT NULL,
+    name           VARCHAR(100) NOT NULL,
+    condition_text TEXT         NOT NULL,
+    checked_at     TIMESTAMP    NOT NULL,
+    run_mode       VARCHAR(20)  NOT NULL,
+    fired          BOOLEAN      NOT NULL,
+    summary        TEXT,
+    details        TEXT,
+    confidence     VARCHAR(10)
 );
 ```
 
-Миграция применяется автоматически при старте через Flyway.
+Миграции применяются автоматически при старте через Flyway (V1, V2).
+
+### Просмотр истории
+
+```sql
+-- Все срабатывания за последние 30 дней
+SELECT checked_at, name, condition_text, summary, confidence
+FROM trigger_check_history
+WHERE fired = true
+  AND checked_at >= now() - interval '30 days'
+ORDER BY checked_at DESC;
+
+-- История конкретной бумаги
+SELECT checked_at, condition_text, fired, summary, confidence
+FROM trigger_check_history
+WHERE isin = 'RU000A10ES32'
+ORDER BY checked_at DESC;
+
+-- Последнее состояние всех триггеров
+SELECT isin, frequency, last_checked_at, last_fired_at,
+       last_summary, last_confidence
+FROM trigger_state
+ORDER BY last_fired_at DESC NULLS LAST;
+```
 
 ---
 
