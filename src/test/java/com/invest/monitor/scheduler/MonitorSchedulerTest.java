@@ -155,7 +155,8 @@ class MonitorSchedulerTest {
                 new MonitorConfig.Telegram("token", "chat", ""),
                 new MonitorConfig.Search("tavily-key", 5, List.of(), "", false),
                 new MonitorConfig.Prompt("test system prompt"),
-                "Europe/Moscow"
+                "Europe/Moscow", "anthropic",
+                new MonitorConfig.Google("", "gemini-2.5-flash-preview-05-20", "")
         );
         return new MonitorScheduler(parser, agent, notifier, stateService, config);
     }

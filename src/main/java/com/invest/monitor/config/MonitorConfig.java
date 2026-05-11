@@ -30,7 +30,13 @@ public record MonitorConfig(
 
         /** Часовой пояс для cron-расписания (IANA, например Europe/Moscow). */
         @DefaultValue("Europe/Moscow")
-        String timezone
+        String timezone,
+
+        /** Провайдер агента: anthropic | gemini. */
+        @DefaultValue("anthropic")
+        String agentProvider,
+
+        Google google
 
 ) {
     public record Anthropic(
@@ -83,5 +89,20 @@ public record MonitorConfig(
 
             /** Системный промпт агента — роль, процесс, формат ответа. */
             String system
+    ) {}
+
+    public record Google(
+
+            /** Google AI Studio API key. */
+            @DefaultValue("")
+            String apiKey,
+
+            /** Модель Gemini. */
+            @DefaultValue("gemini-2.5-flash-preview-05-20")
+            String model,
+
+            /** Базовый URL Google Generative Language API. */
+            @DefaultValue("https://generativelanguage.googleapis.com")
+            String baseUrl
     ) {}
 }

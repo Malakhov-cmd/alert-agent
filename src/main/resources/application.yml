@@ -3,7 +3,7 @@ spring:
     name: alert-agent
   ai:
     anthropic:
-      api-key: ${ANTHROPIC_API_KEY}
+      api-key: ${ANTHROPIC_API_KEY:not-configured}
       chat:
         options:
           model: ${monitor.anthropic.model:claude-sonnet-4-6}
@@ -25,9 +25,12 @@ monitor:
   run-mode: ${RUN_MODE:daily}
   delay-between-checks-sec: 60
   timezone: ${MONITOR_TIMEZONE:Europe/Moscow}
+  agent-provider: ${AGENT_PROVIDER:anthropic}
   anthropic:
-    api-key: ${ANTHROPIC_API_KEY}
+    api-key: ${ANTHROPIC_API_KEY:not-configured}
     model: claude-sonnet-4-6
+  google:
+    api-key: ${GOOGLE_API_KEY:}
   telegram:
     bot-token: ${TELEGRAM_BOT_TOKEN}
     chat-id: ${TELEGRAM_CHAT_ID}
