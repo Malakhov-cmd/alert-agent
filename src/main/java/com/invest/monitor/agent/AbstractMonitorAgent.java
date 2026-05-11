@@ -143,14 +143,17 @@ abstract class AbstractMonitorAgent implements MonitorAgent {
         }
     }
 
-    private String formatPreviousResult(Optional<TriggerState> state) {
+    private Map<String, Object> formatPreviousResult(Optional<TriggerState> state) {
         return state.map(s -> {
-            String status  = s.getLastFiredAt() != null
+            String status = s.getLastFiredAt() != null
                     && !s.getLastFiredAt().isBefore(LocalDate.now().minusDays(1))
                     ? "FIRED" : "OK";
-            String conf    = s.getLastConfidence() != null ? s.getLastConfidence() : "unknown";
-            String summary = s.getLastSummary()    != null ? ". " + s.getLastSummary() : "";
-            return status + ", " + conf + ", " + s.getLastCheckedAt() + summary;
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("status",     status);
+            m.put("confidence", s.getLastConfidence() != null ? s.getLastConfidence() : "unknown");
+            m.put("checked_at", s.getLastCheckedAt().toString());
+            if (s.getLastSummary() != null) m.put("summary", s.getLastSummary());
+            return m;
         }).orElse(null);
     }
 
