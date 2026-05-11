@@ -21,8 +21,6 @@ public class TelegramNotifier {
 
     private static final Logger log = LoggerFactory.getLogger(TelegramNotifier.class);
 
-    private static final String API_BASE = "https://api.telegram.org/bot";
-
     private final String chatId;
     private final RestClient restClient;
 
@@ -30,7 +28,7 @@ public class TelegramNotifier {
         MonitorConfig.Telegram tg = config.telegram();
         this.chatId = tg.chatId();
         this.restClient = builder
-                .baseUrl(API_BASE + tg.botToken())
+                .baseUrl(tg.apiBaseUrl() + tg.botToken())
                 .build();
     }
 

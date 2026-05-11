@@ -164,8 +164,8 @@ class MonitorSchedulerTest {
         MonitorConfig config = new MonitorConfig(
                 "./vault", runMode, 0L,
                 new MonitorConfig.Anthropic("key", "model"),
-                new MonitorConfig.Telegram("token", "chat"),
-                new MonitorConfig.Search("tavily-key", 5, List.of()),
+                new MonitorConfig.Telegram("token", "chat", ""),
+                new MonitorConfig.Search("tavily-key", 5, List.of(), ""),
                 new MonitorConfig.Prompt("test system prompt"),
                 "Europe/Moscow"
         );

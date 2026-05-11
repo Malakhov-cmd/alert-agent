@@ -22,8 +22,6 @@ public class AgentTools {
 
     private static final Logger log = LoggerFactory.getLogger(AgentTools.class);
 
-    private static final String TAVILY_URL = "https://api.tavily.com";
-
     private final String       tavilyApiKey;
     private final int          maxResults;
     private final List<String> includeDomains;
@@ -34,7 +32,7 @@ public class AgentTools {
         this.tavilyApiKey   = search.tavilyApiKey();
         this.maxResults     = search.maxResults();
         this.includeDomains = search.includeDomains();
-        this.restClient     = builder.baseUrl(TAVILY_URL).build();
+        this.restClient     = builder.baseUrl(search.tavilyUrl()).build();
     }
 
     // ── Tools ────────────────────────────────────────────────────────

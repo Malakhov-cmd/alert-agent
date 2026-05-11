@@ -49,7 +49,11 @@ public record MonitorConfig(
             String botToken,
 
             /** ID чата / канала для сигналов. */
-            String chatId
+            String chatId,
+
+            /** Базовый URL Telegram Bot API. */
+            @DefaultValue("https://api.telegram.org/bot")
+            String apiBaseUrl
     ) {}
 
     public record Search(
@@ -64,7 +68,11 @@ public record MonitorConfig(
             /** Домены, по которым ограничивается поиск Tavily. */
             @DefaultValue({"cbr.ru", "moex.com", "rusbonds.ru", "finam.ru",
                            "smartlab.ru", "ria.ru", "interfax.ru", "bloomberg.com"})
-            List<String> includeDomains
+            List<String> includeDomains,
+
+            /** Базовый URL Tavily Search API. */
+            @DefaultValue("https://api.tavily.com")
+            String tavilyUrl
     ) {}
 
     public record Prompt(

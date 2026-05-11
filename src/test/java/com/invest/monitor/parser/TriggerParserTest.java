@@ -27,8 +27,8 @@ class TriggerParserTest {
         MonitorConfig config = new MonitorConfig(
                 vaultPath.toString(), "daily", 0L,
                 new MonitorConfig.Anthropic("test-key", "claude-sonnet-4-6"),
-                new MonitorConfig.Telegram("test-token", "test-chat"),
-                new MonitorConfig.Search("test-tavily-key", 5, List.of()),
+                new MonitorConfig.Telegram("test-token", "test-chat", ""),
+                new MonitorConfig.Search("test-tavily-key", 5, List.of(), ""),
                 new MonitorConfig.Prompt("test system prompt"),
                 "Europe/Moscow"
         );
@@ -110,8 +110,8 @@ class TriggerParserTest {
         MonitorConfig badConfig = new MonitorConfig(
                 "/несуществующий/путь", "daily", 0L,
                 new MonitorConfig.Anthropic("k", "m"),
-                new MonitorConfig.Telegram("t", "c"),
-                new MonitorConfig.Search("s", 5, List.of()),
+                new MonitorConfig.Telegram("t", "c", ""),
+                new MonitorConfig.Search("s", 5, List.of(), ""),
                 new MonitorConfig.Prompt("test prompt"),
                 "Europe/Moscow"
         );
