@@ -25,6 +25,7 @@ public class AgentTools {
     private final String       tavilyApiKey;
     private final int          maxResults;
     private final List<String> includeDomains;
+    private final boolean      stub;
     private final RestClient   restClient;
 
     public AgentTools(MonitorConfig config, RestClient.Builder builder) {
@@ -32,6 +33,7 @@ public class AgentTools {
         this.tavilyApiKey   = search.tavilyApiKey();
         this.maxResults     = search.maxResults();
         this.includeDomains = search.includeDomains();
+        this.stub           = search.stub();
         this.restClient     = builder.baseUrl(search.tavilyUrl()).build();
     }
 
@@ -52,6 +54,13 @@ public class AgentTools {
             """)
     public String webSearch(String query) {
         log.debug("web_search: «{}»", query);
+
+        if (stub) {
+            log.warn("[STUB] Tavily заглушка активна — возвращаем фиктивный ответ для: «{}»", query);
+            return "[STUB] Данные поиска недоступны в режиме разработки. " +
+                   "Запрос: «" + query + "». " +
+                   "Используйте этот ответ только для проверки формата JSON-ответа агента.";
+        }
 
         Map<String, Object> body = Map.of(
                 "api_key",         tavilyApiKey,

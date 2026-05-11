@@ -1,0 +1,11 @@
+monitor:
+  search:
+    stub: true          # Tavily не вызывается — возвращает фиктивный ответ
+    tavily-api-key: stub-key-not-used
+
+logging:
+  level:
+    # SQL-запросы Hibernate
+    org.hibernate.SQL: DEBUG
+    # Значения bind-параметров (Hibernate 6 / Spring Boot 3)
+    org.hibernate.orm.jdbc.bind: TRACE

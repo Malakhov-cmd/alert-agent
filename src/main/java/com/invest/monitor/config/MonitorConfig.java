@@ -72,7 +72,11 @@ public record MonitorConfig(
 
             /** Базовый URL Tavily Search API. */
             @DefaultValue("https://api.tavily.com")
-            String tavilyUrl
+            String tavilyUrl,
+
+            /** Заглушка поиска: возвращает фиктивный ответ без HTTP-запроса к Tavily. */
+            @DefaultValue("false")
+            boolean stub
     ) {}
 
     public record Prompt(
