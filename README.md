@@ -70,6 +70,7 @@
 | `SPRING_DATASOURCE_USERNAME` | — | Пользователь БД, по умолчанию `alertagent` |
 | `SPRING_DATASOURCE_PASSWORD` | — | Пароль БД |
 | `RUN_MODE` | — | Режим запуска (см. [таблицу](#все-режимы-run_mode)), по умолчанию `daily` |
+| `GEMINI_MODEL` | — | Модель Gemini, по умолчанию `gemini-2.5-flash` |
 | `MONITOR_TIMEZONE` | — | Часовой пояс расписания (IANA), по умолчанию `Europe/Moscow` |
 | `SPRING_PROFILES_ACTIVE` | — | `dev` — включает stub-режим и SQL-логи |
 
@@ -101,7 +102,7 @@
 
 **Grounding с Google Search:** модель сама делает поисковые запросы через Google, без внешних API. Источники — весь публичный интернет, включая acra-ratings.ru, moex.com, interfax.ru и т. д.
 
-Используемая модель: `gemini-2.5-flash-preview-05-20` — задаётся в `application.yml`.
+Используемая модель: `gemini-2.5-flash` по умолчанию — переключается через переменную `GEMINI_MODEL` без пересборки.
 
 ### Telegram Bot Token (`TELEGRAM_BOT_TOKEN`)
 
@@ -607,7 +608,7 @@ monitor:
       - cbr.ru
     tavily-url: https://api.tavily.com
   google:
-    model: gemini-2.5-flash-preview-05-20  # только при agent-provider=gemini
+    model: gemini-2.5-flash  # только при agent-provider=gemini; переопределяется через GEMINI_MODEL
     base-url: https://generativelanguage.googleapis.com
   telegram:
     api-base-url: https://api.telegram.org/bot
