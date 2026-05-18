@@ -107,6 +107,31 @@ public record MonitorConfig(
 
             /** Базовый URL Google Generative Language API. */
             @DefaultValue("https://generativelanguage.googleapis.com")
-            String baseUrl
-    ) {}
+            String baseUrl,
+
+            Http http
+    ) {
+        public record Http(
+
+                /** Таймаут установки TCP-соединения, мс. */
+                @DefaultValue("10000")
+                int connectTimeoutMs,
+
+                /** Таймаут чтения ответа (socket), с. Gemini может думать долго. */
+                @DefaultValue("120")
+                int responseTimeoutSec,
+
+                /** TTL соединения в пуле, с. Должен быть меньше keep-alive сервера. */
+                @DefaultValue("55")
+                int connectionTtlSec,
+
+                /** Максимальное время простоя соединения до вытеснения из пула, с. */
+                @DefaultValue("30")
+                int maxIdleTimeSec,
+
+                /** Максимум соединений в пуле (Gemini — sequential, достаточно 2). */
+                @DefaultValue("2")
+                int maxConnections
+        ) {}
+    }
 }

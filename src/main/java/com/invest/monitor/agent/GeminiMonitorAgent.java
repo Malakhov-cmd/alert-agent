@@ -5,6 +5,7 @@ import com.invest.monitor.config.MonitorConfig;
 import com.invest.monitor.domain.Trigger;
 import com.invest.monitor.domain.TriggerFrequency;
 import com.invest.monitor.state.TriggerStateService;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
@@ -29,12 +30,12 @@ public class GeminiMonitorAgent extends AbstractMonitorAgent {
     public GeminiMonitorAgent(TriggerStateService stateService,
                                ObjectMapper mapper,
                                MonitorConfig config,
-                               RestClient.Builder builder) {
+                               @Qualifier("geminiRestClient") RestClient restClient) {
         super(stateService, mapper, config);
         MonitorConfig.Google google = config.google();
         this.model      = google.model();
         this.apiKey     = google.apiKey();
-        this.restClient = builder.baseUrl(google.baseUrl()).build();
+        this.restClient = restClient;
     }
 
     @Override
