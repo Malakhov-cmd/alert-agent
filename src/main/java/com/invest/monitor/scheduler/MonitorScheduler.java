@@ -65,16 +65,16 @@ public class MonitorScheduler {
 
     // ── Расписание ───────────────────────────────────────────────────
 
-    @Scheduled(cron = "0 0 9 * * *", zone = "${monitor.timezone:Europe/Moscow}")
+    @Scheduled(cron = "${monitor.schedule.daily-cron}", zone = "${monitor.timezone:Europe/Moscow}")
     public void runDaily() { run(TriggerFrequency.DAILY, "daily"); }
 
-    @Scheduled(cron = "0 0 9 * * MON", zone = "${monitor.timezone:Europe/Moscow}")
+    @Scheduled(cron = "${monitor.schedule.weekly-cron}", zone = "${monitor.timezone:Europe/Moscow}")
     public void runWeekly() { run(TriggerFrequency.WEEKLY, "weekly"); }
 
-    @Scheduled(cron = "0 0 9 1 * *", zone = "${monitor.timezone:Europe/Moscow}")
+    @Scheduled(cron = "${monitor.schedule.monthly-cron}", zone = "${monitor.timezone:Europe/Moscow}")
     public void runMonthly() { run(TriggerFrequency.MONTHLY, "monthly"); }
 
-    @Scheduled(cron = "0 0 9 1 1,4,7,10 *", zone = "${monitor.timezone:Europe/Moscow}")
+    @Scheduled(cron = "${monitor.schedule.quarterly-cron}", zone = "${monitor.timezone:Europe/Moscow}")
     public void runQuarterly() { run(TriggerFrequency.QUARTERLY, "quarterly"); }
 
     // ── Поллер очереди retry ─────────────────────────────────────────

@@ -152,13 +152,14 @@ class MonitorSchedulerTest {
 
     private MonitorScheduler makeScheduler(String runMode) {
         MonitorConfig config = new MonitorConfig(
-                "./vault", runMode, 0L,
+                "./vault", runMode, 0L, 0L,
                 new MonitorConfig.Anthropic("key", "model"),
                 new MonitorConfig.Telegram("token", "chat", ""),
                 new MonitorConfig.Search("tavily-key", 5, List.of(), "", false, 3),
-                new MonitorConfig.Prompt("test system prompt"),
+                new MonitorConfig.Prompt("test system prompt", ""),
+                new MonitorConfig.Schedule("0 0 9 * * *", "0 0 9 * * MON", "0 0 9 1 * *", "0 0 9 1 1,4,7,10 *"),
                 "Europe/Moscow", "anthropic",
-                new MonitorConfig.Google("", "gemini-2.5-flash", "", null)
+                new MonitorConfig.Google("", List.of(), "gemini-2.5-flash", "", null)
         );
         return new MonitorScheduler(parser, agent, notifier, stateService, retryService, config);
     }

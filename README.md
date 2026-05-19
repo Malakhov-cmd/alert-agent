@@ -13,12 +13,13 @@
 4. [Как устроен vault](#как-устроен-vault)
 5. [Полный цикл работы](#полный-цикл-работы)
 6. [Когда триггер берётся в работу](#когда-триггер-берётся-в-работу)
-7. [Запуск в Docker — пошаговая инструкция](#запуск-в-docker--пошаговая-инструкция)
-8. [Режим разработки (dev)](#режим-разработки-dev)
-9. [Другие сценарии запуска](#другие-сценарии-запуска)
-10. [Тонкая настройка](#тонкая-настройка)
-11. [Как выглядит сообщение в Telegram](#как-выглядит-сообщение-в-telegram)
-12. [Структура проекта](#структура-проекта)
+7. [Устойчивость к ошибкам API](#устойчивость-к-ошибкам-api)
+8. [Запуск в Docker — пошаговая инструкция](#запуск-в-docker--пошаговая-инструкция)
+9. [Режим разработки (dev)](#режим-разработки-dev)
+10. [Другие сценарии запуска](#другие-сценарии-запуска)
+11. [Тонкая настройка](#тонкая-настройка)
+12. [Как выглядит сообщение в Telegram](#как-выглядит-сообщение-в-telegram)
+13. [Структура проекта](#структура-проекта)
 
 ---
 
@@ -34,7 +35,8 @@
 6. Если триггер сработал — отправляет сигнал 🚨 или ⚠️ в Telegram (с указанием действия)
 7. Сохраняет результат и полную историю проверок в PostgreSQL
 8. Между бумагами держит паузу (по умолчанию 60 сек) для соблюдения rate limit
-9. Запускается по расписанию: ежедневно / еженедельно / ежемесячно / ежеквартально
+9. При ошибке API (503/429) — моментальный retry (30→60→120 сек), затем отложенные повторы через БД
+10. Запускается по расписанию: ежедневно / еженедельно / ежемесячно / ежеквартально
 
 ---
 
@@ -59,7 +61,8 @@
 |------------|-------------|----------|
 | `AGENT_PROVIDER` | — | Провайдер LLM: `anthropic` (по умолчанию) или `gemini` |
 | `ANTHROPIC_API_KEY` | ✅ при `anthropic` | Ключ Claude API |
-| `GOOGLE_API_KEY` | ✅ при `gemini` | Google AI Studio API Key |
+| `GOOGLE_API_KEY` | ✅ при `gemini` | Google AI Studio API Key (основной) |
+| `GOOGLE_API_KEYS` | — | Дополнительные ключи через запятую — включает режим «один вызов на триггер» |
 | `TELEGRAM_BOT_TOKEN` | ✅ | Токен Telegram-бота |
 | `TELEGRAM_CHAT_ID` | ✅ | ID чата/канала для сигналов |
 | `TAVILY_API_KEY` | ✅ при `anthropic` | Ключ поискового API (при gemini не нужен) |
@@ -210,18 +213,26 @@ Obsidian vault (MD-файл)
   TriggerStateService    Проверяет по PostgreSQL: ISIN уже обработан в этом периоде?
         │                Да → пропустить весь ISIN. Нет → передать агенту
         ▼
-  MonitorAgent           Группирует по ISIN, для каждого ISIN (с паузой между ними):
+  MonitorAgent           Группирует триггеры по ISIN, затем:
         │
-        ├─► ANTHROPIC    Один запрос = один ISIN со всеми триггерами + позицией
-        │   Claude       Системный промпт + список условий + previous_results (история N проверок) из БД
+        ├─► ANTHROPIC    Один запрос на ISIN — все триггеры бумаги в одном промпте
+        │   Claude       Системный промпт + список условий + previous_results из БД
         │   (tool-use)       │
         │                    ▼
         │               AgentTools.webSearch → Tavily API (до 3 раз на ISIN)
         │               acra-ratings.ru, moex.com, cbr.ru, interfax.ru...
+        │               Пауза 60 сек между ISIN
         │
-        ├─► GEMINI       Тот же запрос, без tool-use
+        ├─► GEMINI       Режим зависит от числа API-ключей в конфиге:
         │   Gemini 2.5   Grounding: Google Search встроен в модель (Tavily не нужен)
-        │   Flash
+        │   Flash        │
+        │                ├─ 1 ключ  → один запрос на ISIN (все триггеры вместе)
+        │                │            3 поиска делятся между всеми условиями бумаги
+        │                │            Пауза 60 сек между ISIN
+        │                │
+        │                └─ N ключей → один запрос на триггер (round-robin по ключам)
+        │                              3 поиска посвящены одному условию → макс. качество
+        │                              Пауза 2 сек между вызовами (нет паузы между ISIN)
         │
         ▼   (оба провайдера возвращают одинаковый формат)
         │   JSON-массив: [{ condition, fired, summary, details, confidence, action }, ...]
@@ -229,8 +240,9 @@ Obsidian vault (MD-файл)
         ▼
   TriggerStateService    INSERT в trigger_check_history (каждый триггер + action)
         │                UPDATE trigger_state (last_checked_at, last_fired_at, last_summary...)
+        │                Не пишется при ошибке агента → ISIN остаётся в очереди retry
         ▼
-  MonitorResult          fired=true → сигнал, fired=false → норма
+  MonitorResult          fired=true → сигнал, error=true → retry queue, false → норма
         │
         ▼
   TelegramNotifier       Только сработавшие (fired=true) → sendMessage
@@ -238,6 +250,52 @@ Obsidian vault (MD-файл)
         ▼
   Telegram               🚨 или ⚠️ сообщение с summary, details и 🎯 action
 ```
+
+### Режимы Gemini подробнее
+
+#### Режим «один ключ» — батчевый
+
+Все триггеры одной бумаги объединяются в один промпт. Модель получает массив условий и делает **не более 3 поисковых запросов на всю бумагу**, стараясь покрыть максимум условий за один запрос.
+
+```
+ISIN RU000A10DA74 (5 триггеров)
+  [рейтинг, купон, цена, иски, новости] → 1 вызов → 3 поиска → 5 ответов
+  sleep 60 сек
+ISIN RU000A10CMQ5 (3 триггера)
+  [рейтинг, купон, новости] → 1 вызов → 3 поиска → 3 ответа
+```
+
+Поисковый бюджет делится: при 5 условиях на каждое приходится в среднем 0.6 поиска.
+
+#### Режим «несколько ключей» — per-trigger
+
+Каждый триггер проверяется отдельным вызовом. Ключи чередуются через `AtomicInteger` — сквозной счётчик идёт через все ISIN и все триггеры.
+
+```
+ISIN RU000A10DA74 (5 триггеров)
+  триггер 1 «рейтинг»  → ключ[0] → 3 поиска → 1 ответ
+  sleep 2 сек
+  триггер 2 «купон»    → ключ[1] → 3 поиска → 1 ответ
+  sleep 2 сек
+  триггер 3 «цена»     → ключ[2] → 3 поиска → 1 ответ
+  sleep 2 сек
+  триггер 4 «иски»     → ключ[3] → 3 поиска → 1 ответ
+  sleep 2 сек
+  триггер 5 «новости»  → ключ[4] → 3 поиска → 1 ответ
+
+ISIN RU000A10CMQ5 (3 триггера)
+  триггер 1 → ключ[0]   ← счётчик продолжается
+  ...
+```
+
+Каждый ключ получает 1 вызов раз в `N × 2` секунд. При 5 ключах — раз в 10 сек, что комфортно в пределах лимита 10 запросов/мин бесплатного тарифа.
+
+| | 1 ключ | 5 ключей |
+|---|---|---|
+| Вызовов LLM на 10 ISIN × 5 триг. | 10 | 50 |
+| Поисков на триггер | ~0.6 | 3 |
+| Время прогона | ~10 мин | ~2 мин |
+| Нагрузка на ключ | 10 вызовов | 10 вызовов |
 
 ---
 
@@ -315,11 +373,22 @@ CREATE TABLE trigger_check_history (
     summary        TEXT,
     details        TEXT,
     confidence     VARCHAR(10),
-    action         VARCHAR(200)           -- рекомендованное действие от агента
+    action         VARCHAR(200)
+);
+
+-- Очередь отложенных повторных проверок (при ошибках API)
+CREATE TABLE check_retry_queue (
+    id           BIGSERIAL   PRIMARY KEY,
+    isin         VARCHAR(12) NOT NULL,
+    frequency    VARCHAR(20) NOT NULL,
+    label        VARCHAR(20) NOT NULL,
+    attempt      INT         NOT NULL DEFAULT 1,
+    scheduled_at TIMESTAMP   NOT NULL,
+    created_at   TIMESTAMP   NOT NULL DEFAULT now()
 );
 ```
 
-Миграции применяются автоматически при старте через Flyway (V1, V2, V3).
+Миграции применяются автоматически при старте через Flyway (V1–V4).
 
 ### Просмотр истории
 
@@ -343,6 +412,68 @@ SELECT isin, frequency, last_checked_at, last_fired_at,
 FROM trigger_state
 ORDER BY last_fired_at DESC NULLS LAST;
 ```
+
+---
+
+## Устойчивость к ошибкам API
+
+Провайдеры LLM периодически возвращают ошибки перегрузки (503) или превышения лимитов (429). Агент обрабатывает их в два уровня.
+
+### Уровень 1 — моментальный retry (в момент вызова)
+
+Применяется только для **Gemini** при ошибках 503/429. До 3 попыток с нарастающей паузой:
+
+| Попытка | Пауза перед повтором |
+|---------|----------------------|
+| 1 → 2   | 30 секунд |
+| 2 → 3   | 60 секунд |
+| 3 → 4   | 120 секунд |
+
+Если все 4 вызова провалились — ISIN переходит на второй уровень.
+
+### Уровень 2 — отложенный retry через БД
+
+Если ISIN не удалось проверить после всех моментальных попыток:
+
+1. Запись попадает в таблицу `check_retry_queue` (PostgreSQL)
+2. Поллер `processRetryQueue()` проверяет очередь **каждые 5 минут**
+3. При наступлении времени — перепроверяет только упавшие ISIN, не трогая остальные
+4. До **3 отложенных попыток** с интервалом **1 час** между ними
+
+```
+Основной прогон (09:00)
+  └── ISIN упал → check_retry_queue (attempt=1, scheduled_at=10:00)
+
+10:00 → поллер → retry #1
+  ├── OK  → удаляем из очереди
+  └── err → reschedule (attempt=2, scheduled_at=11:00)
+
+11:00 → поллер → retry #2
+  └── err → reschedule (attempt=3, scheduled_at=12:00)
+
+12:00 → поллер → retry #3
+  └── err → DELETE + Telegram: ⚠️ Не удалось проверить бумаги
+```
+
+### Telegram-уведомление при исчерпании попыток
+
+Если после 3 отложенных попыток ISIN всё ещё недоступен — приходит сообщение:
+
+```
+⚠️ Не удалось проверить бумаги
+
+Агент не ответил после всех попыток:
+• RU000A10DA74 (4 триг.)
+• RU000A10CMQ5 (3 триг.)
+
+Требуется ручная проверка.
+```
+
+### Важные свойства
+
+- **Очередь хранится в БД** — не теряется при рестарте контейнера
+- **Состояние не пишется при ошибке** — `trigger_state` не обновляется, `alreadyCheckedThisPeriod` не заблокирует повтор
+- **Нет дублирования** — если ISIN уже в очереди, повторный `enqueue` игнорируется
 
 ---
 
@@ -644,11 +775,13 @@ java --enable-preview -jar alert-agent.jar \
   --monitor.google.api-key=AIza...
 ```
 
-### Про rate limit
+### Про rate limit и ошибки API
 
 **Claude (Anthropic):** новый аккаунт — 30 000 input-токенов/мин. Один вызов (один ISIN, 3–5 триггеров) ~8 000–12 000 токенов. Поэтому пауза 60 сек по умолчанию. При Tier 2 ($40+) лимит 80 000 токенов/мин — паузу можно снизить до 10–15 сек.
 
 **Gemini (Google):** бесплатный тариф — 10 запросов/мин, 500 запросов/день. Для 10 ISIN ежедневно хватает. Платный тариф снимает большинство ограничений.
+
+Ошибки 503 (`Service Unavailable`) — не превышение лимита, а временная перегрузка серверов Google. Gemini 2.5 Flash особенно подвержен им в часы пиковой нагрузки. Агент обрабатывает их автоматически — см. раздел [Устойчивость к ошибкам API](#устойчивость-к-ошибкам-api).
 
 ---
 
@@ -690,8 +823,10 @@ src/main/java/com/invest/monitor/
 ├── agent/
 │   ├── MonitorAgent.java                — интерфейс: checkAll(triggers)
 │   ├── AbstractMonitorAgent.java        — общая логика: группировка, промпт, парсинг
+│   │                                      при ошибке возвращает MonitorResult.error (state не пишется)
 │   ├── AnthropicMonitorAgent.java       — Claude + Tavily tool-use (@ConditionalOnProperty)
 │   ├── GeminiMonitorAgent.java          — Gemini + Google Search Grounding (@ConditionalOnProperty)
+│   │                                      моментальный retry 503/429: 30→60→120 сек
 │   └── AgentTools.java                  — @Tool webSearch → Tavily API (stub-режим)
 ├── config/
 │   └── MonitorConfig.java               — @ConfigurationProperties (monitor.*)
@@ -699,11 +834,16 @@ src/main/java/com/invest/monitor/
 │   ├── Trigger.java                     — record: строка таблицы + позиция в портфеле
 │   ├── TriggerLevel.java                — sealed interface: Critical | Warning
 │   ├── TriggerFrequency.java            — enum: DAILY | WEEKLY | MONTHLY | QUARTERLY
-│   └── MonitorResult.java               — record: fired, summary, details, confidence, action
+│   └── MonitorResult.java               — record: fired, error, summary, details, confidence, action
 ├── parser/
 │   └── TriggerParser.java               — читает MD-таблицу, парсит колонку Позиция
+├── retry/
+│   ├── CheckRetryEntry.java             — JPA-сущность: одна запись очереди (isin, attempt, scheduled_at)
+│   ├── CheckRetryRepository.java        — Spring Data репозиторий
+│   └── CheckRetryService.java           — enqueue / pollDue / markSuccess / markFailed
 ├── scheduler/
 │   └── MonitorScheduler.java            — @Scheduled расписание + startup run
+│                                          + поллер очереди retry каждые 5 мин
 ├── state/
 │   ├── TriggerState.java                — JPA-сущность: (isin, frequency) → состояние
 │   ├── TriggerStateId.java              — составной ключ для JPA
@@ -712,7 +852,8 @@ src/main/java/com/invest/monitor/
 │   ├── TriggerCheckHistory.java         — JPA-сущность: одна запись на проверку (+ action)
 │   └── TriggerCheckHistoryRepository.java
 └── telegram/
-    └── TelegramNotifier.java            — RestClient → Telegram Bot API (+ 🎯 action)
+    └── TelegramNotifier.java            — RestClient → Telegram Bot API
+                                           notifyFired + notifyCheckFailed (исчерпаны retry)
 
 src/main/resources/
 ├── application.yml                      — основная конфигурация + системный промпт
@@ -720,7 +861,8 @@ src/main/resources/
 └── db/migration/
     ├── V1__create_trigger_state.sql     — создание trigger_state
     ├── V2__add_history.sql              — добавление trigger_check_history
-    └── V3__add_action_to_history.sql    — колонка action в trigger_check_history
+    ├── V3__add_action_to_history.sql    — колонка action в trigger_check_history
+    └── V4__add_retry_queue.sql          — таблица check_retry_queue
 
 src/test/
 ├── java/com/invest/monitor/

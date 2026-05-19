@@ -19,14 +19,19 @@ public record MonitorConfig(
         @DefaultValue("daily")
         String runMode,
 
-        /** Пауза между проверками триггеров в секундах (защита от rate limit). */
+        /** Пауза между ISIN в батчевом режиме, секунд (защита от rate limit). */
         @DefaultValue("60")
         long delayBetweenChecksSec,
+
+        /** Пауза между отдельными вызовами в per-trigger режиме Gemini, секунд. */
+        @DefaultValue("2")
+        long delayBetweenCallsSec,
 
         Anthropic anthropic,
         Telegram  telegram,
         Search    search,
         Prompt    prompt,
+        Schedule  schedule,
 
         /** Часовой пояс для cron-расписания (IANA, например Europe/Moscow). */
         @DefaultValue("Europe/Moscow")
@@ -89,17 +94,44 @@ public record MonitorConfig(
             int historySize
     ) {}
 
+    public record Schedule(
+
+            /** Cron ежедневного прогона (секунды минуты часы день месяц день_недели). */
+            @DefaultValue("0 0 9 * * *")
+            String dailyCron,
+
+            /** Cron еженедельного прогона. */
+            @DefaultValue("0 0 9 * * MON")
+            String weeklyCron,
+
+            /** Cron ежемесячного прогона. */
+            @DefaultValue("0 0 9 1 * *")
+            String monthlyCron,
+
+            /** Cron ежеквартального прогона. */
+            @DefaultValue("0 0 9 1 1,4,7,10 *")
+            String quarterlyCron
+    ) {}
+
     public record Prompt(
 
-            /** Системный промпт агента — роль, процесс, формат ответа. */
-            String system
+            /** Системный промпт для батчевого режима (один вызов на ISIN). */
+            String system,
+
+            /** Системный промпт для per-trigger режима (один вызов на триггер, несколько ключей Gemini).
+             *  Если не задан — используется основной промпт {@code system}. */
+            @DefaultValue("")
+            String systemPerTrigger
     ) {}
 
     public record Google(
 
-            /** Google AI Studio API key. */
+            /** Google AI Studio API key (primary, backward compat). */
             @DefaultValue("")
             String apiKey,
+
+            /** Дополнительные ключи для ротации — по одному на проект Google AI Studio. */
+            List<String> apiKeys,
 
             /** Модель Gemini. */
             @DefaultValue("gemini-2.5-flash")

@@ -25,13 +25,14 @@ class TriggerParserTest {
                 Objects.requireNonNull(getClass().getClassLoader().getResource("vault")).toURI()
         );
         MonitorConfig config = new MonitorConfig(
-                vaultPath.toString(), "daily", 0L,
+                vaultPath.toString(), "daily", 0L, 0L,
                 new MonitorConfig.Anthropic("test-key", "claude-sonnet-4-6"),
                 new MonitorConfig.Telegram("test-token", "test-chat", ""),
                 new MonitorConfig.Search("test-tavily-key", 5, List.of(), "", false, 3),
-                new MonitorConfig.Prompt("test system prompt"),
+                new MonitorConfig.Prompt("test system prompt", ""),
+                new MonitorConfig.Schedule("0 0 9 * * *", "0 0 9 * * MON", "0 0 9 1 * *", "0 0 9 1 1,4,7,10 *"),
                 "Europe/Moscow", "anthropic",
-                new MonitorConfig.Google("", "gemini-2.5-flash", "", null)
+                new MonitorConfig.Google("", List.of(), "gemini-2.5-flash", "", null)
         );
         parser = new TriggerParser(config);
     }
@@ -109,13 +110,14 @@ class TriggerParserTest {
     @Test
     void parse_throwsWhenFileNotFound() {
         MonitorConfig badConfig = new MonitorConfig(
-                "/несуществующий/путь", "daily", 0L,
+                "/несуществующий/путь", "daily", 0L, 0L,
                 new MonitorConfig.Anthropic("k", "m"),
                 new MonitorConfig.Telegram("t", "c", ""),
                 new MonitorConfig.Search("s", 5, List.of(), "", false, 3),
-                new MonitorConfig.Prompt("test prompt"),
+                new MonitorConfig.Prompt("test prompt", ""),
+                new MonitorConfig.Schedule("0 0 9 * * *", "0 0 9 * * MON", "0 0 9 1 * *", "0 0 9 1 1,4,7,10 *"),
                 "Europe/Moscow", "anthropic",
-                new MonitorConfig.Google("", "gemini-2.5-flash", "", null)
+                new MonitorConfig.Google("", List.of(), "gemini-2.5-flash", "", null)
         );
         TriggerParser badParser = new TriggerParser(badConfig);
 
