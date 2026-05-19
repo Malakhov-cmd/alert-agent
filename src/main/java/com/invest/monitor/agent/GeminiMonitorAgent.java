@@ -8,6 +8,7 @@ import com.invest.monitor.state.TriggerStateService;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
@@ -50,16 +51,38 @@ public class GeminiMonitorAgent extends AbstractMonitorAgent {
                 Map.of("role", "user", "parts", List.of(Map.of("text", userMessage)))));
         body.put("generationConfig", Map.of("maxOutputTokens", 8192, "temperature", 0.1));
 
-        try {
-            GeminiResponse response = restClient.post()
-                    .uri("/v1beta/models/{model}:generateContent?key={key}", model, apiKey)
-                    .body(body)
-                    .retrieve()
-                    .body(GeminiResponse.class);
-            return extractText(response);
-        } catch (RestClientException e) {
-            throw new RuntimeException("Ошибка Gemini API: " + e.getMessage(), e);
+        int[] retryDelaysSec = {30, 60, 120};
+        RestClientException lastException = null;
+
+        for (int attempt = 0; attempt <= retryDelaysSec.length; attempt++) {
+            try {
+                GeminiResponse response = restClient.post()
+                        .uri("/v1beta/models/{model}:generateContent?key={key}", model, apiKey)
+                        .body(body)
+                        .retrieve()
+                        .body(GeminiResponse.class);
+                return extractText(response);
+            } catch (HttpServerErrorException e) {
+                lastException = e;
+                if (e.getStatusCode().value() == 503 && attempt < retryDelaysSec.length) {
+                    int delaySec = retryDelaysSec[attempt];
+                    log.warn("Gemini 503 для ISIN {} (попытка {}/{}), повтор через {} сек.",
+                            isin, attempt + 1, retryDelaysSec.length, delaySec);
+                    try {
+                        Thread.sleep(delaySec * 1000L);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        throw new RuntimeException("Прервано ожидание retry Gemini", ie);
+                    }
+                } else {
+                    throw new RuntimeException("Ошибка Gemini API: " + e.getMessage(), e);
+                }
+            } catch (RestClientException e) {
+                throw new RuntimeException("Ошибка Gemini API: " + e.getMessage(), e);
+            }
         }
+
+        throw new RuntimeException("Ошибка Gemini API после " + retryDelaysSec.length + " попыток: " + lastException.getMessage(), lastException);
     }
 
     private String extractText(GeminiResponse response) {

@@ -3,6 +3,7 @@ package com.invest.monitor.telegram;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.invest.monitor.config.MonitorConfig;
 import com.invest.monitor.domain.MonitorResult;
+import com.invest.monitor.domain.Trigger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -11,6 +12,7 @@ import org.springframework.web.client.RestClientException;
 
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * Отправляет сигналы в Telegram через Bot API.
@@ -46,6 +48,23 @@ public class TelegramNotifier {
 
     /** Отправляет одно сообщение по готовому тексту (для тестов и ручного вызова). */
     public void sendRaw(String text) {
+        doSend(text);
+    }
+
+    /** Уведомляет об ISIN, которые не удалось проверить после всех попыток. */
+    public void notifyCheckFailed(List<Trigger> triggers) {
+        String bonds = triggers.stream()
+                .collect(Collectors.groupingBy(Trigger::isin, Collectors.counting()))
+                .entrySet().stream()
+                .map(e -> "• " + e.getKey() + " (" + e.getValue() + " триг.)")
+                .collect(Collectors.joining("\n"));
+
+        String text = "⚠️ <b>Не удалось проверить бумаги</b>\n\n"
+                + "Агент не ответил после всех попыток:\n"
+                + bonds
+                + "\n\n<i>Требуется ручная проверка.</i>";
+        log.warn("Отправляем уведомление о {} незапроверенных ISIN", triggers.stream()
+                .map(Trigger::isin).distinct().count());
         doSend(text);
     }
 

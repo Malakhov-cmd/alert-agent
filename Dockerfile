@@ -3,8 +3,8 @@ FROM maven:3.9-eclipse-temurin-21-alpine AS build
 
 WORKDIR /build
 COPY pom.xml .
-# Скачиваем зависимости отдельным слоем — кешируется пока pom.xml не изменился
-RUN mvn dependency:go-offline -Dmaven.test.skip=true
+# Скачиваем зависимости и плагины отдельным слоем — кешируется пока pom.xml не изменился
+RUN mvn dependency:go-offline dependency:resolve-plugins -Dmaven.test.skip=true
 
 COPY src ./src
 RUN mvn package -DskipTests

@@ -7,6 +7,7 @@ import com.invest.monitor.domain.Trigger;
 import com.invest.monitor.domain.TriggerFrequency;
 import com.invest.monitor.domain.TriggerLevel;
 import com.invest.monitor.parser.TriggerParser;
+import com.invest.monitor.retry.CheckRetryService;
 import com.invest.monitor.state.TriggerStateService;
 import com.invest.monitor.telegram.TelegramNotifier;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,6 +33,7 @@ class MonitorSchedulerTest {
     @Mock MonitorAgent        agent;
     @Mock TelegramNotifier    notifier;
     @Mock TriggerStateService stateService;
+    @Mock CheckRetryService   retryService;
 
     private final Trigger daily1    = trigger("RU0001", TriggerFrequency.DAILY);
     private final Trigger daily2    = trigger("RU0002", TriggerFrequency.DAILY);
@@ -158,7 +160,7 @@ class MonitorSchedulerTest {
                 "Europe/Moscow", "anthropic",
                 new MonitorConfig.Google("", "gemini-2.5-flash", "", null)
         );
-        return new MonitorScheduler(parser, agent, notifier, stateService, config);
+        return new MonitorScheduler(parser, agent, notifier, stateService, retryService, config);
     }
 
     private Trigger trigger(String isin, TriggerFrequency frequency) {

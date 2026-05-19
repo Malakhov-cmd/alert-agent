@@ -16,6 +16,7 @@ import java.time.Instant;
 public record MonitorResult(
         Trigger trigger,
         boolean fired,
+        boolean error,
         String  summary,
         String  details,
         String  confidence,
@@ -31,7 +32,7 @@ public record MonitorResult(
     }
 
     public static MonitorResult ok(Trigger trigger, String details, String confidence, String action) {
-        return new MonitorResult(trigger, false, "Норма", details, confidence, action, Instant.now());
+        return new MonitorResult(trigger, false, false, "Норма", details, confidence, action, Instant.now());
     }
 
     public static MonitorResult fired(Trigger trigger, String summary, String details) {
@@ -44,7 +45,11 @@ public record MonitorResult(
 
     public static MonitorResult fired(Trigger trigger, String summary, String details,
                                       String confidence, String action) {
-        return new MonitorResult(trigger, true, summary, details, confidence, action, Instant.now());
+        return new MonitorResult(trigger, true, false, summary, details, confidence, action, Instant.now());
+    }
+
+    public static MonitorResult error(Trigger trigger, String message) {
+        return new MonitorResult(trigger, false, true, "Ошибка проверки", message, null, null, Instant.now());
     }
 
     /** Форматирует Telegram-сообщение (вызывается только если fired == true). HTML parse_mode. */
@@ -74,7 +79,7 @@ public record MonitorResult(
     }
 
     public MonitorResult {
-        if (summary == null || summary.isBlank()) summary = fired ? "Триггер сработал" : "Норма";
+        if (summary == null || summary.isBlank()) summary = fired ? "Триггер сработал" : (error ? "Ошибка проверки" : "Норма");
         if (details == null) details = "";
         if (checkedAt == null) checkedAt = Instant.now();
     }

@@ -67,7 +67,7 @@ abstract class AbstractMonitorAgent implements MonitorAgent {
         while (it.hasNext()) {
             Map.Entry<String, List<Trigger>> entry = it.next();
             List<MonitorResult> results = checkIsin(entry.getKey(), entry.getValue(), frequency);
-            results.forEach(r -> stateService.recordCheck(r, frequency));
+            results.stream().filter(r -> !r.error()).forEach(r -> stateService.recordCheck(r, frequency));
             allResults.addAll(results);
 
             if (it.hasNext()) sleep();
@@ -95,7 +95,7 @@ abstract class AbstractMonitorAgent implements MonitorAgent {
         } catch (Exception e) {
             log.error("Ошибка при проверке ISIN {}: {}", isin, e.getMessage(), e);
             return triggers.stream()
-                    .map(t -> MonitorResult.ok(t, "Ошибка агента: " + e.getMessage()))
+                    .map(t -> MonitorResult.error(t, e.getMessage()))
                     .toList();
         }
     }
