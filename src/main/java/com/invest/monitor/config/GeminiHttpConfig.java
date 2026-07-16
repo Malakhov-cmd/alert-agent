@@ -24,19 +24,15 @@ public class GeminiHttpConfig {
         ConnectionConfig connConfig = ConnectionConfig.custom()
                 .setConnectTimeout(Timeout.ofMilliseconds(http.connectTimeoutMs()))
                 .setSocketTimeout(Timeout.ofSeconds(http.responseTimeoutSec()))
-                .setTimeToLive(TimeValue.ofSeconds(http.connectionTtlSec()))
                 .build();
 
         HttpClientConnectionManager cm = PoolingHttpClientConnectionManagerBuilder.create()
                 .setDefaultConnectionConfig(connConfig)
-                .setMaxConnTotal(http.maxConnections())
-                .setMaxConnPerRoute(http.maxConnections())
                 .build();
 
         CloseableHttpClient httpClient = HttpClients.custom()
                 .setConnectionManager(cm)
-                .evictExpiredConnections()
-                .evictIdleConnections(TimeValue.ofSeconds(http.maxIdleTimeSec()))
+                .setConnectionReuseStrategy((request, response, context) -> false)
                 .build();
 
         return RestClient.builder()

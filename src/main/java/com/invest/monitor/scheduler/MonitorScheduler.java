@@ -19,6 +19,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
 /**
@@ -42,12 +43,14 @@ public class MonitorScheduler {
 
     private static final Logger log = LoggerFactory.getLogger(MonitorScheduler.class);
 
-    private final TriggerParser       parser;
-    private final MonitorAgent        agent;
-    private final TelegramNotifier    notifier;
-    private final TriggerStateService stateService;
-    private final CheckRetryService   retryService;
-    private final String              runMode;
+    private final AtomicBoolean        running = new AtomicBoolean(false);
+
+    private final TriggerParser        parser;
+    private final MonitorAgent         agent;
+    private final TelegramNotifier     notifier;
+    private final TriggerStateService  stateService;
+    private final CheckRetryService    retryService;
+    private final String               runMode;
 
     public MonitorScheduler(TriggerParser parser,
                             MonitorAgent agent,
@@ -119,6 +122,18 @@ public class MonitorScheduler {
     // ── Основная логика прогона ──────────────────────────────────────
 
     void run(TriggerFrequency frequency, String label) {
+        if (!running.compareAndSet(false, true)) {
+            log.info("[{}] Прогон уже выполняется — пропускаем.", label);
+            return;
+        }
+        try {
+            doRun(frequency, label);
+        } finally {
+            running.set(false);
+        }
+    }
+
+    private void doRun(TriggerFrequency frequency, String label) {
         log.info("=== Запуск проверки [{}] ===", label);
 
         List<Trigger> triggers = parser.parseActive().stream()

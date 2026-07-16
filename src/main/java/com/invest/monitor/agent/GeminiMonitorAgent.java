@@ -168,8 +168,15 @@ public class GeminiMonitorAgent extends AbstractMonitorAgent {
                 if ((e.getStatusCode().value() == 503 || e.getStatusCode().value() == 429)
                         && attempt < retryDelaysSec.length) {
                     int delaySec = retryDelaysSec[attempt];
-                    log.warn("Gemini {} для ISIN {} (попытка {}/{}), повтор через {} сек.",
-                            e.getStatusCode().value(), isin, attempt + 1, retryDelaysSec.length, delaySec);
+                    if (e.getStatusCode().value() == 429 && keyPool.size() > 1) {
+                        apiKey = nextKey();
+                        log.warn("Gemini 429 для ISIN {} (попытка {}/{}), ротация ключа → …{}, повтор через {} сек.",
+                                isin, attempt + 1, retryDelaysSec.length,
+                                apiKey.substring(Math.max(0, apiKey.length() - 6)), delaySec);
+                    } else {
+                        log.warn("Gemini {} для ISIN {} (попытка {}/{}), повтор через {} сек.",
+                                e.getStatusCode().value(), isin, attempt + 1, retryDelaysSec.length, delaySec);
+                    }
                     try {
                         Thread.sleep(delaySec * 1000L);
                     } catch (InterruptedException ie) {

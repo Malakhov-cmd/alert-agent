@@ -207,7 +207,7 @@ public class TriggerParser {
     }
 
     private Double parseDouble(String raw, String originalCell, String fieldName) {
-        String cleaned = raw.replace("%", "");
+        String cleaned = raw.replace("%", "").replace(",", ".");
         if (cleaned.isEmpty()) return null;
         try {
             return Double.parseDouble(cleaned);

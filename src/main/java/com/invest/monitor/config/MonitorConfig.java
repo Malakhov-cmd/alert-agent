@@ -151,19 +151,7 @@ public record MonitorConfig(
 
                 /** Таймаут чтения ответа (socket), с. Gemini может думать долго. */
                 @DefaultValue("120")
-                int responseTimeoutSec,
-
-                /** TTL соединения в пуле, с. Должен быть меньше keep-alive сервера. */
-                @DefaultValue("55")
-                int connectionTtlSec,
-
-                /** Максимальное время простоя соединения до вытеснения из пула, с. */
-                @DefaultValue("30")
-                int maxIdleTimeSec,
-
-                /** Максимум соединений в пуле (Gemini — sequential, достаточно 2). */
-                @DefaultValue("2")
-                int maxConnections
+                int responseTimeoutSec
         ) {}
     }
 }

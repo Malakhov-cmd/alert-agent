@@ -162,11 +162,13 @@
 
 ### Колонка Позиция
 
-Формат: `текущая%/лимит%` — текущая доля в портфеле и максимально допустимая.
+Формат: `текущая%/лимит%` — текущая доля в портфеле и максимально допустимая.  
+В числах допустима как точка, так и запятая (`31,2%` и `31.2%` равнозначны).
 
 | Значение | currentSharePct | limitPct | Что получит агент |
 |----------|-----------------|----------|-------------------|
 | `18%/25%` | 18.0 | 25.0 | `"position": {"current_share_pct": 18.0, "limit_pct": 25.0}` |
+| `31,2%/20%` | 31.2 | 20.0 | запятая как десятичный разделитель |
 | `0%/20%` | 0.0 | 20.0 | позиция ещё не открыта, лимит задан |
 | `3%/` | 3.0 | null | доля без ограничения |
 | *(пусто)* | null | null | поле position не передаётся |
@@ -428,6 +430,8 @@ ORDER BY last_fired_at DESC NULLS LAST;
 | 1 → 2   | 30 секунд |
 | 2 → 3   | 60 секунд |
 | 3 → 4   | 120 секунд |
+
+При ошибке **429** и нескольких API-ключах — перед повтором происходит **ротация ключа**: следующая попытка идёт на другой ключ из пула, а не на тот же самый. Это предотвращает перекос нагрузки, при котором один ключ получает и плановые, и retry-запросы.
 
 Если все 4 вызова провалились — ISIN переходит на второй уровень.
 
@@ -826,10 +830,11 @@ src/main/java/com/invest/monitor/
 │   │                                      при ошибке возвращает MonitorResult.error (state не пишется)
 │   ├── AnthropicMonitorAgent.java       — Claude + Tavily tool-use (@ConditionalOnProperty)
 │   ├── GeminiMonitorAgent.java          — Gemini + Google Search Grounding (@ConditionalOnProperty)
-│   │                                      моментальный retry 503/429: 30→60→120 сек
+│   │                                      моментальный retry 503/429: 30→60→120 сек + ротация ключа при 429
 │   └── AgentTools.java                  — @Tool webSearch → Tavily API (stub-режим)
 ├── config/
-│   └── MonitorConfig.java               — @ConfigurationProperties (monitor.*)
+│   ├── MonitorConfig.java               — @ConfigurationProperties (monitor.*)
+│   └── GeminiHttpConfig.java            — RestClient без keep-alive (новое соединение на каждый запрос)
 ├── domain/
 │   ├── Trigger.java                     — record: строка таблицы + позиция в портфеле
 │   ├── TriggerLevel.java                — sealed interface: Critical | Warning
@@ -844,6 +849,7 @@ src/main/java/com/invest/monitor/
 ├── scheduler/
 │   └── MonitorScheduler.java            — @Scheduled расписание + startup run
 │                                          + поллер очереди retry каждые 5 мин
+│                                          + AtomicBoolean-защита от параллельных прогонов
 ├── state/
 │   ├── TriggerState.java                — JPA-сущность: (isin, frequency) → состояние
 │   ├── TriggerStateId.java              — составной ключ для JPA
